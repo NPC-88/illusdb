@@ -109,3 +109,5 @@ Bands are written as `{from, to, shift}`, with `shift` set to 0 or 2. The prompt
 - Give Claude the trace mask as extra context (hybrid).
 - Add a skyline composer that combines 3 landmarks at the same scale on a shared baseline.
 - Before rollout, confirm the grey tones and Cold Black hex with the DB colour spec.
+   ## Workflow Test
+   Polygon selection and undo/redo are now live.
