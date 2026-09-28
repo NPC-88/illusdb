@@ -92,6 +92,7 @@ It listens on `PORT` (default 3000). Put it behind HTTPS.
 | `SESSION_SECRET` | random at start | signs login cookies; set it so sign-ins survive restarts |
 | `MODEL` | `claude-sonnet-5` | "Balanced" model |
 | `MODEL_COMPLEX` | `claude-opus-5-5` | "Most capable" model |
+| `MAX_TOKENS` | 32000 | output cap per draft, Claude's thinking included (answers are streamed) |
 | `DRAFTS_PER_HOUR` | 30 | per person (IP) |
 | `DRAFTS_PER_DAY` | 300 | whole team |
 
