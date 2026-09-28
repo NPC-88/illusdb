@@ -32,7 +32,7 @@ These reshape the plan before the renderer runs, and they never loosen the const
 - **Rows:** fewer or more rows (merge the thinnest / split the tallest), row offset on/off, a 1 dp or 4 dp gap between rows, and an optional plinth row.
 - **Parts & symmetry:** switch off any part Claude drew (hover to highlight it in the web tool), and mirror the left or right half.
 
-**Revise with Claude** sends the plan *as adjusted* (`bakeScene()`), so Claude builds on what the designer tuned. **Write adjustments into plan** does the same locally, without asking Claude.
+**Revise with Claude** sends the plan *as adjusted* (`bakeScene()`), so Claude builds on what the designer tuned.
 
 The no-AI trace engine is still in the core as `trace()` but is no longer shown in the UI.
 
@@ -117,7 +117,7 @@ Two more ops shape the bar pattern instead of the area:
 
 Every shape and band can carry `level` 1–3 (see Detail above). Untagged masses count as level 1, untagged openings as level 2.
 
-Bands are written as `{from, to, shift, level}`, with `shift` set to 0 or 2. The prompt is in `buildPrompt()`. It includes `WORKED_EXAMPLE`, the designer-made St. Petri Dom (Bremen) graphic rebuilt as a plan (86 × 180 dp, 9 rows at Rich). At Rich the plan matches the designer's bars on 172 of 180 dp rows, so Claude sees the density and the techniques DB designers use. The same plan is the St. Petri Dom example in the tool. Designers can also edit the JSON directly in both front ends.
+Bands are written as `{from, to, shift, level}`, with `shift` set to 0 or 2. The prompt is in `buildPrompt()`. It includes `WORKED_EXAMPLE`, the designer-made St. Petri Dom (Bremen) graphic rebuilt as a plan (86 × 180 dp, 9 rows at Rich). At Rich the plan matches the designer's bars on 172 of 180 dp rows, so Claude sees the density and the techniques DB designers use. The same plan is the St. Petri Dom example in the tool. In the Figma plugin designers can also edit the JSON directly.
 
 ## What the reference set taught us
 

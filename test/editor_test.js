@@ -53,7 +53,7 @@ const { chromium } = require('playwright');
   assert.notEqual(await pg.innerText('#zVal'), 'Fit');
 
   // Done puts everything back
-  await pg.click('#edClose');
+  await pg.click('#edClose'); await pg.waitForTimeout(150); // the dialog's close event fires asynchronously
   assert.ok(await pg.evaluate(() => !document.getElementById('editor').open && !!document.querySelector('#drop #photo') && !!document.querySelector('.a-in #toolSeg') && document.getElementById('photo').style.width === ''), 'layout restored');
   await pg.keyboard.press('e'); assert.ok(await pg.evaluate(() => document.getElementById('editor').open), 'E opens the editor');
   await pg.screenshot({ path: path.join(__dirname, 'out/editor_fit.png') });
