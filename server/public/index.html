@@ -163,7 +163,7 @@ details[open] summary{margin-bottom:10px}
         <div class="thumbs" id="thumbs"></div>
         <input id="file" class="sr" type="file" accept="image/png,image/jpeg,image/webp" multiple>
         <div class="row between">
-          <div class="seg" id="toolSeg" role="group" aria-label="Photo tool"><button type="button" data-t="crop" aria-pressed="true">Crop</button><button type="button" data-t="sky" aria-pressed="false">Pick sky</button><button type="button" data-t="build" aria-pressed="false">Pick building</button><button type="button" data-t="polygon" aria-pressed="false">Draw area</button></div>
+          <div class="seg" id="toolSeg" role="group" aria-label="Photo tool"><button type="button" data-t="crop" aria-pressed="true">Crop</button><button type="button" data-t="sky" aria-pressed="false">Pick sky</button><button type="button" data-t="build" aria-pressed="false">Pick building</button></div>
           <button id="clearPicks" class="linkbtn" type="button">Clear picks</button>
         </div>
         <div id="drop" class="drop">
@@ -271,8 +271,8 @@ details[open] summary{margin-bottom:10px}
     </article>
 
     <aside class="card a-adj" aria-label="Adjustments">
-      <div class="row between"><div><p class="eyebrow">Adjust</p><h2>Fine-tune the plan</h2></div><div class="row"><button id="modUndo" class="linkbtn" type="button" title="Undo (Ctrl+Z)">↶ Undo</button><button id="modRedo" class="linkbtn" type="button" title="Redo (Ctrl+Y)">↷ Redo</button><button id="modReset" class="linkbtn" type="button">Reset</button></div></div>
-      <p class="hint">Instant, no new Claude call. The DB construction rules stay locked. Use Ctrl+Z to undo.</p>
+      <div class="row between"><div><p class="eyebrow">Adjust</p><h2>Fine-tune the plan</h2></div><button id="modReset" class="linkbtn" type="button">Reset</button></div>
+      <p class="hint">Instant, no new Claude call. The DB construction rules stay locked.</p>
 
       <div class="adj-sec">
         <h3>Openings & detail</h3>
@@ -1388,48 +1388,13 @@ function update(){ rebuild(); draw(); }
 function setScene(scene, example){
   state.scene = scene; state.example = !!example; state.name = scene.landmark || 'Signature graphic';
   state.mods = freshMods(); state.hover = null;
-  modHistory = [JSON.parse(JSON.stringify(state.mods))];
-  modHistoryIndex = 0;
-  updateHistoryButtons();
   $('aJson').value = JSON.stringify(scene, null, 1);
   drawNotes(); drawParts(); update();
 }
 function showA(t, err){ const m = $('aMsg'); m.hidden = !t; m.textContent = t || ''; m.classList.toggle('err', !!err); }
 
-// ---------- adjustment panel & undo/redo
+// ---------- adjustment panel
 const pct = (v) => Math.round(v*100) + '%';
-let modHistory = [];
-let modHistoryIndex = -1;
-function saveToHistory(){
-  // Remove any redo history if we're in the middle
-  if (modHistoryIndex < modHistory.length - 1) {
-    modHistory = modHistory.slice(0, modHistoryIndex + 1);
-  }
-  // Save current state
-  modHistory.push(JSON.parse(JSON.stringify(state.mods)));
-  modHistoryIndex = modHistory.length - 1;
-  updateHistoryButtons();
-}
-function undoAdjustment(){
-  if (modHistoryIndex > 0) {
-    modHistoryIndex--;
-    state.mods = JSON.parse(JSON.stringify(modHistory[modHistoryIndex]));
-    rebuild(); draw(); syncAdjust();
-    updateHistoryButtons();
-  }
-}
-function redoAdjustment(){
-  if (modHistoryIndex < modHistory.length - 1) {
-    modHistoryIndex++;
-    state.mods = JSON.parse(JSON.stringify(modHistory[modHistoryIndex]));
-    rebuild(); draw(); syncAdjust();
-    updateHistoryButtons();
-  }
-}
-function updateHistoryButtons(){
-  $('modUndo').disabled = modHistoryIndex <= 0;
-  $('modRedo').disabled = modHistoryIndex >= modHistory.length - 1;
-}
 function syncAdjust(){
   const m = state.mods;
   $('mOpen').value = m.openingSize; $('mOpenO').textContent = pct(m.openingSize);
@@ -1442,23 +1407,21 @@ function syncAdjust(){
   [...$('mirSeg').children].forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.m === m.mirror)));
   const on = !!state.scene; document.querySelectorAll('.a-adj input,.a-adj button').forEach(el => el.disabled = !on || (el.id==='rowMinus' && $('rowMinus').disabled));
 }
-function bindRange(id, key){ $(id).addEventListener('input', e => { state.mods[key] = +e.target.value; saveToHistory(); update(); }); }
+function bindRange(id, key){ $(id).addEventListener('input', e => { state.mods[key] = +e.target.value; update(); }); }
 bindRange('mOpen','openingSize'); bindRange('mDensity','density'); bindRange('mSimplify','simplify');
-$('rowMinus').onclick = () => { state.mods.rowDelta -= 1; saveToHistory(); update(); };
-$('rowPlus').onclick = () => { const before = state.res && state.res.bands.length; state.mods.rowDelta += 1; saveToHistory(); update(); if (state.res && state.res.bands.length === before) { state.mods.rowDelta -= 1; update(); toast('Rows are already as thin as the rules allow'); } };
-$('mOffset').onchange = e => { state.mods.rowOffset = e.target.checked; saveToHistory(); update(); };
-$('mPlinth').onchange = e => { state.mods.plinth = e.target.checked; saveToHistory(); update(); };
-$('gapSeg').onclick = e => { const b=e.target.closest('button'); if(!b) return; state.mods.rowGap = +b.dataset.g; saveToHistory(); update(); };
-$('mirSeg').onclick = e => { const b=e.target.closest('button'); if(!b) return; state.mods.mirror = b.dataset.m; saveToHistory(); update(); };
-$('parts').addEventListener('change', e => { const i = +e.target.dataset.i; const h = new Set(state.mods.hidden); e.target.checked ? h.delete(i) : h.add(i); state.mods.hidden = [...h]; e.target.closest('.part').classList.toggle('off', !e.target.checked); saveToHistory(); update(); });
+$('rowMinus').onclick = () => { state.mods.rowDelta -= 1; update(); };
+$('rowPlus').onclick = () => { const before = state.res && state.res.bands.length; state.mods.rowDelta += 1; update(); if (state.res && state.res.bands.length === before) { state.mods.rowDelta -= 1; update(); toast('Rows are already as thin as the rules allow'); } };
+$('mOffset').onchange = e => { state.mods.rowOffset = e.target.checked; update(); };
+$('mPlinth').onchange = e => { state.mods.plinth = e.target.checked; update(); };
+$('gapSeg').onclick = e => { const b=e.target.closest('button'); if(!b) return; state.mods.rowGap = +b.dataset.g; update(); };
+$('mirSeg').onclick = e => { const b=e.target.closest('button'); if(!b) return; state.mods.mirror = b.dataset.m; update(); };
+$('parts').addEventListener('change', e => { const i = +e.target.dataset.i; const h = new Set(state.mods.hidden); e.target.checked ? h.delete(i) : h.add(i); state.mods.hidden = [...h]; e.target.closest('.part').classList.toggle('off', !e.target.checked); update(); });
 $('parts').addEventListener('pointerover', e => { const p = e.target.closest('.part'); const i = p ? +p.dataset.i : null; if (i !== state.hover) { state.hover = i; draw(); } });
 $('parts').addEventListener('pointerleave', () => { state.hover = null; draw(); });
 $('parts').addEventListener('focusin', e => { const p = e.target.closest('.part'); if (p) { state.hover = +p.dataset.i; draw(); } });
 $('parts').addEventListener('focusout', () => { state.hover = null; draw(); });
-$('partsAll').onclick = () => { state.mods.hidden = []; saveToHistory(); drawParts(); update(); };
-$('modReset').onclick = () => { state.mods = freshMods(); saveToHistory(); drawParts(); update(); };
-$('modUndo').onclick = undoAdjustment;
-$('modRedo').onclick = redoAdjustment;
+$('partsAll').onclick = () => { state.mods.hidden = []; drawParts(); update(); };
+$('modReset').onclick = () => { state.mods = freshMods(); drawParts(); update(); };
 
 // ---------- photos (up to 4), crop, sky/building picks
 const MAX_PHOTOS = 4;
@@ -1502,11 +1465,10 @@ function removePhoto(i){
 $('makeMain').onclick = () => { state.main = state.active; drawThumbs(); refreshSketch(); toast('Photo ' + (state.main+1) + ' now sets the proportions'); };
 $('newLandmark').onclick = () => { state.photos = []; state.active = 0; state.main = 0; state.scene = null; state.example = false; state.mods = freshMods(); $('aJson').value=''; $('landmark').value=''; $('notes').value=''; drawNotes(); drawParts(); update(); drawThumbs(); paintPhoto(); refreshSketch(); showA(''); };
 
-// tool: crop / pick sky / pick building / polygon drawing
-const TOOL_HINT = { crop: 'Drag across the photo to crop to the landmark. Leave out trees, cars and neighbouring buildings.', sky: 'Click on sky areas (clouds too, and sky seen through arches). Each click teaches the silhouette what sky looks like here.', build: 'Click on parts of the building that get mistaken for sky, such as pale stone, glass or a roof in shadow.', polygon: 'Click to draw points around the building area. Double-click or press Enter to finalize. Right-click to remove the last point.' };
-let polygonPoints = [];
-$('toolSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; state.tool = b.dataset.t; [...$('toolSeg').children].forEach(x => x.setAttribute('aria-pressed', String(x===b))); $('toolHint').textContent = TOOL_HINT[state.tool]; cv.style.cursor = state.tool === 'crop' ? 'crosshair' : (state.tool === 'polygon' ? 'crosshair' : 'copy'); if (state.tool !== 'polygon') polygonPoints = []; };
-$('clearPicks').onclick = () => { const p = act(); if (!p) return; p.sky = []; p.build = []; polygonPoints = []; paintPhoto(); refreshSketch(); };
+// tool: crop / pick sky / pick building
+const TOOL_HINT = { crop: 'Drag across the photo to crop to the landmark. Leave out trees, cars and neighbouring buildings.', sky: 'Click on sky areas (clouds too, and sky seen through arches). Each click teaches the silhouette what sky looks like here.', build: 'Click on parts of the building that get mistaken for sky, such as pale stone, glass or a roof in shadow.' };
+$('toolSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; state.tool = b.dataset.t; [...$('toolSeg').children].forEach(x => x.setAttribute('aria-pressed', String(x===b))); $('toolHint').textContent = TOOL_HINT[state.tool]; cv.style.cursor = state.tool === 'crop' ? 'crosshair' : 'copy'; };
+$('clearPicks').onclick = () => { const p = act(); if (!p) return; p.sky = []; p.build = []; paintPhoto(); refreshSketch(); };
 function sampleLab(p, nx, ny){
   const sm = p.small, f = sm._f, g = sm.getContext('2d');
   const x = Math.max(0, Math.round(nx*f) - 3), y = Math.max(0, Math.round(ny*f) - 3);
@@ -1527,99 +1489,20 @@ function paintPhoto(){
   ctx.strokeStyle = '#00B3FF'; ctx.lineWidth = 2; ctx.setLineDash([6,4]); ctx.strokeRect(x+.5,y+.5,w,h); ctx.setLineDash([]);
   const dot = (q, fill) => { ctx.beginPath(); ctx.arc(q.nx*sc, q.ny*sc, 6, 0, Math.PI*2); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke(); };
   p.sky.forEach(q => dot(q, '#00B3FF')); p.build.forEach(q => dot(q, '#EC0016'));
-
-  // Draw polygon points if in polygon mode
-  if (state.tool === 'polygon' && polygonPoints.length > 0) {
-    // Draw connecting lines
-    ctx.strokeStyle = '#00B3FF';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
-    ctx.beginPath();
-    ctx.moveTo(polygonPoints[0].x * sc, polygonPoints[0].y * sc);
-    for (let i = 1; i < polygonPoints.length; i++) {
-      ctx.lineTo(polygonPoints[i].x * sc, polygonPoints[i].y * sc);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Draw points
-    polygonPoints.forEach((pt, i) => {
-      ctx.beginPath();
-      ctx.arc(pt.x * sc, pt.y * sc, 6, 0, Math.PI * 2);
-      ctx.fillStyle = '#00B3FF';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#fff';
-      ctx.stroke();
-
-      // Draw point number
-      ctx.fillStyle = '#00B3FF';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText((i + 1), pt.x * sc, pt.y * sc);
-    });
-  }
 }
 let drag = null;
 function evPos(e){ const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * cv.width / cv._sc, y: (e.clientY - r.top) / r.height * cv.height / cv._sc }; }
 cv.addEventListener('pointerdown', e => {
   const p = act(); if (!p) return;
   const q = evPos(e);
-  if (state.tool === 'polygon') {
-    if (e.button === 2) { // right-click: remove last point
-      if (polygonPoints.length > 0) polygonPoints.pop();
-      paintPhoto(); return;
-    }
-    polygonPoints.push(q);
-    paintPhoto();
-    return;
-  }
   if (state.tool !== 'crop') { const pick = { nx: q.x, ny: q.y, lab: sampleLab(p, q.x, q.y) }; (state.tool === 'sky' ? p.sky : p.build).push(pick); paintPhoto(); refreshSketch(); return; }
   cv.setPointerCapture(e.pointerId); drag = q;
 });
-cv.addEventListener('pointermove', e => {
-  if (state.tool === 'polygon') { paintPhoto(); return; } // redraw for visual feedback
-  if(!drag) return; const p = act(), q = evPos(e), im = p.img;
+cv.addEventListener('pointermove', e => { if(!drag) return; const p = act(), q = evPos(e), im = p.img;
   const x0 = Math.max(0, Math.min(drag.x, q.x)), y0 = Math.max(0, Math.min(drag.y, q.y));
   const x1 = Math.min(im.naturalWidth, Math.max(drag.x, q.x)), y1 = Math.min(im.naturalHeight, Math.max(drag.y, q.y));
-  if (x1-x0 > 8 && y1-y0 > 8) { p.crop = { x:x0, y:y0, w:x1-x0, h:y1-y0 }; p.overlay = null; paintPhoto(); }
-});
+  if (x1-x0 > 8 && y1-y0 > 8) { p.crop = { x:x0, y:y0, w:x1-x0, h:y1-y0 }; p.overlay = null; paintPhoto(); } });
 cv.addEventListener('pointerup', () => { if (drag) { drag = null; refreshSketch(); } });
-cv.addEventListener('dblclick', e => {
-  if (state.tool === 'polygon' && polygonPoints.length >= 3) {
-    finalizePolygon();
-  }
-});
-cv.addEventListener('contextmenu', e => {
-  if (state.tool === 'polygon') e.preventDefault();
-});
-document.addEventListener('keydown', e => {
-  if (state.tool === 'polygon' && (e.key === 'Enter' && polygonPoints.length >= 3)) {
-    finalizePolygon();
-  }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-    e.preventDefault();
-    undoAdjustment();
-  }
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-    e.preventDefault();
-    redoAdjustment();
-  }
-});
-function finalizePolygon(){
-  const p = act(); if (!p || polygonPoints.length < 3) return;
-  // Store the polygon points as a crop area for now
-  const xs = polygonPoints.map(pt => pt.x);
-  const ys = polygonPoints.map(pt => pt.y);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-  p.crop = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-  p.overlay = null;
-  polygonPoints = [];
-  paintPhoto();
-  refreshSketch();
-  toast('Area selected. Adjust the silhouette sliders as needed.');
-}
 $('resetCrop').onclick = () => { const p = act(); if(!p) return; p.crop = { x:0, y:0, w:p.img.naturalWidth, h:p.img.naturalHeight }; p.overlay = null; paintPhoto(); refreshSketch(); };
 
 // ---------- measured silhouette ("sketch")
@@ -1772,12 +1655,7 @@ async function saveSVG(){ const svg = currentSVG(); if (!svg) return; if (!downl
 $('aCopy').onclick = copySVG; $('aSave').onclick = saveSVG;
 
 // ---------- boot
-if (!SAMPLE_SCENE) {
-  modHistory = [JSON.parse(JSON.stringify(state.mods))];
-  modHistoryIndex = 0;
-  drawNotes(); drawParts(); update();
-}
-updateHistoryButtons();
+if (!SAMPLE_SCENE) { drawNotes(); drawParts(); update(); }
 drawRefs();
 drawThumbs(); syncPhotoControls();
 function loadExample(i){
