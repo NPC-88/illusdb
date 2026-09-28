@@ -1,0 +1,17 @@
+{"landmark":"St. Petri Dom, Bremen","confidence":"high","width":68,"height":150,
+"bands":[{"from":0,"to":18,"shift":0},{"from":18,"to":26,"shift":2},{"from":26,"to":50,"shift":0},{"from":50,"to":74,"shift":2},{"from":74,"to":99,"shift":0},{"from":99,"to":150,"shift":2}],
+"shapes":[
+{"type":"rect","x":0,"y":0,"w":68,"h":50,"note":"west front"},
+{"type":"rect","x":0,"y":50,"w":24,"h":49,"note":"left tower"},
+{"type":"rect","x":44,"y":50,"w":24,"h":49,"note":"right tower"},
+{"type":"gable","x":24,"y":50,"w":20,"h":17,"note":"central gable"},
+{"type":"spire","cx":12,"y":99,"w":22,"h":51,"note":"left spire"},
+{"type":"spire","cx":56,"y":99,"w":22,"h":51,"note":"right spire"},
+{"type":"arch","x":5,"y":0,"w":8,"h":14,"op":"cut","note":"portal L"},
+{"type":"arch","x":30,"y":0,"w":8,"h":14,"op":"cut","note":"portal C"},
+{"type":"arch","x":55,"y":0,"w":8,"h":14,"op":"cut","note":"portal R"},
+{"type":"windows","x":2,"y":19,"w":64,"h":6,"cols":8,"rows":1,"fillX":0.5,"fillY":0.8,"note":"arcade frieze"},
+{"type":"ellipse","cx":34,"cy":37,"rx":6,"ry":6,"op":"cut","note":"rose window"},
+{"type":"windows","x":3,"y":54,"w":18,"h":42,"cols":2,"rows":3,"fillX":0.45,"fillY":0.5,"note":"tower openings L"},
+{"type":"windows","x":47,"y":54,"w":18,"h":42,"cols":2,"rows":3,"fillX":0.45,"fillY":0.5,"note":"tower openings R"}],
+"retained":["twin towers with tall pointed spires","central gable","rose window","three portals"],"uncertain":[],"cleanup":[]}

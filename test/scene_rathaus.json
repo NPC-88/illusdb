@@ -1,0 +1,369 @@
+{
+ "landmark": "Bremer Rathaus",
+ "confidence": "high",
+ "width": 134,
+ "height": 90,
+ "bands": [
+  {
+   "from": 0,
+   "to": 18,
+   "shift": 0
+  },
+  {
+   "from": 18,
+   "to": 28,
+   "shift": 2
+  },
+  {
+   "from": 28,
+   "to": 46,
+   "shift": 0
+  },
+  {
+   "from": 46,
+   "to": 53,
+   "shift": 2
+  },
+  {
+   "from": 53,
+   "to": 80,
+   "shift": 0
+  },
+  {
+   "from": 80,
+   "to": 90,
+   "shift": 2
+  }
+ ],
+ "shapes": [
+  {
+   "type": "rect",
+   "x": 0,
+   "y": 0,
+   "w": 134,
+   "h": 28,
+   "note": "arcade storey with parapet"
+  },
+  {
+   "type": "rect",
+   "x": 0,
+   "y": 28,
+   "w": 134,
+   "h": 25,
+   "note": "main hall façade with eaves balustrade"
+  },
+  {
+   "type": "poly",
+   "points": [
+    [
+     4,
+     53
+    ],
+    [
+     130,
+     53
+    ],
+    [
+     102,
+     72
+    ],
+    [
+     32,
+     72
+    ]
+   ],
+   "note": "hipped roof"
+  },
+  {
+   "type": "rect",
+   "x": 27,
+   "y": 53,
+   "w": 16,
+   "h": 13,
+   "note": "left dormer gable"
+  },
+  {
+   "type": "spire",
+   "cx": 33,
+   "y": 64,
+   "w": 4,
+   "h": 12,
+   "note": "left dormer finial"
+  },
+  {
+   "type": "rect",
+   "x": 91,
+   "y": 53,
+   "w": 16,
+   "h": 13,
+   "note": "right dormer gable"
+  },
+  {
+   "type": "spire",
+   "cx": 101,
+   "y": 64,
+   "w": 4,
+   "h": 12,
+   "note": "right dormer finial"
+  },
+  {
+   "type": "poly",
+   "gap": 4,
+   "points": [
+    [
+     55,
+     53
+    ],
+    [
+     79,
+     53
+    ],
+    [
+     79,
+     74
+    ],
+    [
+     75,
+     74
+    ],
+    [
+     75,
+     80
+    ],
+    [
+     71,
+     80
+    ],
+    [
+     71,
+     85
+    ],
+    [
+     63,
+     85
+    ],
+    [
+     63,
+     80
+    ],
+    [
+     59,
+     80
+    ],
+    [
+     59,
+     74
+    ],
+    [
+     55,
+     74
+    ]
+   ],
+   "note": "central Weser-Renaissance gable"
+  },
+  {
+   "type": "spire",
+   "cx": 67,
+   "y": 85,
+   "w": 6,
+   "h": 5,
+   "note": "gable lantern"
+  },
+  {
+   "type": "arch",
+   "x": 3,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 1"
+  },
+  {
+   "type": "arch",
+   "x": 15,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 2"
+  },
+  {
+   "type": "arch",
+   "x": 27,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 3"
+  },
+  {
+   "type": "arch",
+   "x": 39,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 4"
+  },
+  {
+   "type": "arch",
+   "x": 51,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 5"
+  },
+  {
+   "type": "arch",
+   "x": 63,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 6"
+  },
+  {
+   "type": "arch",
+   "x": 75,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 7"
+  },
+  {
+   "type": "arch",
+   "x": 87,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 8"
+  },
+  {
+   "type": "arch",
+   "x": 99,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 9"
+  },
+  {
+   "type": "arch",
+   "x": 111,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 10"
+  },
+  {
+   "type": "arch",
+   "x": 123,
+   "y": 0,
+   "w": 8,
+   "h": 16,
+   "op": "cut",
+   "note": "arcade arch 11"
+  },
+  {
+   "type": "windows",
+   "x": 5,
+   "y": 29,
+   "w": 48,
+   "h": 16,
+   "cols": 4,
+   "rows": 1,
+   "fillX": 0.667,
+   "fillY": 0.85,
+   "note": "tall hall windows left"
+  },
+  {
+   "type": "windows",
+   "x": 81,
+   "y": 29,
+   "w": 48,
+   "h": 16,
+   "cols": 4,
+   "rows": 1,
+   "fillX": 0.667,
+   "fillY": 0.85,
+   "note": "tall hall windows right"
+  },
+  {
+   "type": "windows",
+   "x": 51,
+   "y": 29,
+   "w": 32,
+   "h": 16,
+   "cols": 2,
+   "rows": 2,
+   "fillX": 0.5,
+   "fillY": 0.7,
+   "note": "central bay windows"
+  },
+  {
+   "type": "rect",
+   "x": 59,
+   "y": 55,
+   "w": 4,
+   "h": 6,
+   "op": "cut",
+   "note": "gable window left"
+  },
+  {
+   "type": "rect",
+   "x": 71,
+   "y": 55,
+   "w": 4,
+   "h": 6,
+   "op": "cut",
+   "note": "gable window right"
+  },
+  {
+   "type": "rect",
+   "x": 63,
+   "y": 64,
+   "w": 8,
+   "h": 6,
+   "op": "cut",
+   "note": "gable window upper"
+  },
+  {
+   "type": "rect",
+   "x": 31,
+   "y": 55,
+   "w": 8,
+   "h": 5,
+   "op": "cut",
+   "note": "left dormer window"
+  },
+  {
+   "type": "rect",
+   "x": 95,
+   "y": 55,
+   "w": 8,
+   "h": 5,
+   "op": "cut",
+   "note": "right dormer window"
+  }
+ ],
+ "retained": [
+  "11-arch arcade",
+  "tall hall windows, 4 each side",
+  "central bay with 2 × 2 windows",
+  "stepped central gable with lantern",
+  "two dormer gables",
+  "hipped roof"
+ ],
+ "uncertain": [
+  "sculpture, balustrade figures, window hoods and weather vanes left out",
+  "dormer gables reduced to a block with a finial",
+  "central gable reduced to 3 steps"
+ ],
+ "cleanup": [
+  "optional: colour the central gable in DB Red when used in a skyline"
+ ]
+}

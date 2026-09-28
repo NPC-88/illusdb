@@ -1,0 +1,28 @@
+# Render Blueprint – DB Signature Graphics Drafter (team server)
+# New → Blueprint → pick this repo. Render asks for the two secret values on first deploy.
+services:
+  - type: web
+    name: db-signature-graphics-drafter
+    runtime: node
+    region: frankfurt
+    plan: starter            # always on; "free" works too but sleeps after 15 min idle
+    buildCommand: echo "no build step"
+    startCommand: node server/server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: ANTHROPIC_API_KEY   # company key from the Claude Console
+        sync: false
+      - key: TEAM_PASSWORD       # shared team password
+        sync: false
+      - key: ANTHROPIC_WORKSPACE_ID  # only if the key is not scoped to a workspace (wrkspc_…)
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: MODEL
+        value: claude-sonnet-5
+      - key: MODEL_COMPLEX
+        value: claude-opus-5-5
+      - key: DRAFTS_PER_HOUR
+        value: "30"
+      - key: DRAFTS_PER_DAY
+        value: "300"
