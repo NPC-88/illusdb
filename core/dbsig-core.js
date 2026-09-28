@@ -484,6 +484,31 @@
   // 9. Engine B – trace + snap (no AI): photo pixels → coverage → graphic
   // ---------------------------------------------------------------------------
   /**
+   * Rasterise designer outlines (even-odd scanline fill) at working resolution.
+   * @param {Array<Array<{u:number,v:number}>>} polys polygons in crop-normalised coords (0..1, y down)
+   * @returns {Uint8Array|null} 1 = inside any polygon; null when there is no usable polygon
+   */
+  function outlineMask(polys, Wp, Hp, offPx, cw) {
+    const list = (polys || []).filter((p) => p && p.length >= 3);
+    if (!list.length) return null;
+    const m = new Uint8Array(Wp * Hp);
+    for (const poly of list) {
+      const pts = poly.map((q) => [offPx + q.u * cw, q.v * Hp]);
+      for (let y = 0; y < Hp; y++) {
+        const yc = y + 0.5, xs = [];
+        for (let a = 0, b = pts.length - 1; a < pts.length; b = a++) {
+          const [xa, ya] = pts[a], [xb, yb] = pts[b];
+          if ((ya > yc) !== (yb > yc)) xs.push(xa + (yc - ya) / (yb - ya) * (xb - xa));
+        }
+        xs.sort((p, q) => p - q);
+        for (let k = 0; k + 1 < xs.length; k += 2)
+          for (let x = Math.max(0, Math.ceil(xs[k] - 0.5)); x < Math.min(Wp, Math.ceil(xs[k + 1] - 0.5)); x++) m[y * Wp + x] = 1;
+      }
+    }
+    return m;
+  }
+
+  /**
    * @param {{width:number,height:number,data:Uint8ClampedArray}} img RGBA, already cropped to the building
    * @param {object} opts height (dp), skyTol (0..1), detail (0..1), bands (max), sensitivity, plinth
    */
@@ -545,9 +570,14 @@
     // --- sky = low distance region connected to the top edge / sides / sky picks (flood fill)
     const isSky = new Uint8Array(Wp * Hp);
     const stack = [];
+    // designer outline (polygons in crop-normalised u/v): outside is sky, inside is building unless flooded from a sky pick
+    const inside = outlineMask(o.outline, Wp, Hp, offPx, cw);
+    if (inside) for (let i = 0; i < Wp * Hp; i++) if (valid[i] && !inside[i]) isSky[i] = 1;
     const seed = (i) => { if (i >= 0 && i < Wp * Hp && valid[i] && !isSky[i] && dist[i] < thr) { isSky[i] = 1; stack.push(i); } };
-    for (let x = offPx; x < offPx + cw; x++) seed(x);
-    for (let y = 0; y < Hp * 0.4; y++) { seed(y * Wp + offPx); seed(y * Wp + offPx + cw - 1); }
+    if (!inside) {
+      for (let x = offPx; x < offPx + cw; x++) seed(x);
+      for (let y = 0; y < Hp * 0.4; y++) { seed(y * Wp + offPx); seed(y * Wp + offPx + cw - 1); }
+    }
     for (const q of skyPicks) if (q.u != null) { const x = Math.round(offPx + q.u * (cw - 1)), y = Math.round(q.v * (Hp - 1)); const i = y * Wp + x; if (valid[i] && !isSky[i]) { isSky[i] = 1; stack.push(i); } }
     while (stack.length) {
       const i = stack.pop(), x = i % Wp, y = (i / Wp) | 0;
@@ -556,9 +586,9 @@
     }
     let cov = new Float32Array(Wp * Hp);
     for (let i = 0; i < Wp * Hp; i++) cov[i] = valid[i] && !isSky[i] ? 1 : 0;
-    if (o.invert) for (let i = 0; i < Wp * Hp; i++) cov[i] = valid[i] ? 1 - cov[i] : 0;
-    // --- keep only building parts that stand on the ground (drops clouds, birds, floating specks)
-    if (o.groundOnly !== false) {
+    if (o.invert && !inside) for (let i = 0; i < Wp * Hp; i++) cov[i] = valid[i] ? 1 - cov[i] : 0; // the outline already says what is sky
+    // --- keep only building parts that stand on the ground (drops clouds, birds, floating specks); an outline is explicit, so skip it
+    if (o.groundOnly !== false && !inside) {
       const keep = new Uint8Array(Wp * Hp), st = [];
       for (let x = 0; x < Wp; x++) { const i = (Hp - 1) * Wp + x; if (cov[i]) { keep[i] = 1; st.push(i); } }
       while (st.length) {
@@ -711,7 +741,7 @@
    */
   function sketch(img, opts) {
     const o = Object.assign({ height: RULES.live, cell: 2, skyTol: 0.5, invert: false, contrast: 0.3, skySamples: [], buildSamples: [] }, opts || {});
-    const t = trace(img, { height: o.height, skyTol: o.skyTol, invert: o.invert, detail: 0, bands: 1, skySamples: o.skySamples, buildSamples: o.buildSamples });
+    const t = trace(img, { height: o.height, skyTol: o.skyTol, invert: o.invert, detail: 0, bands: 1, skySamples: o.skySamples, buildSamples: o.buildSamples, outline: o.outline });
     const { cov, Wp, Hp, PX, lab, valid, W, H } = t.debug;
     const c = o.cell, cp = c * PX;
     // columns that actually hold photo pixels
@@ -749,7 +779,7 @@
    */
   function analyze(img, opts) {
     const o = Object.assign({ height: RULES.live, skyTol: 0.5, invert: false, contrast: 0.3, skySamples: [], buildSamples: [] }, opts || {});
-    const t = trace(img, { height: o.height, skyTol: o.skyTol, invert: o.invert, detail: 0, bands: 1, skySamples: o.skySamples, buildSamples: o.buildSamples });
+    const t = trace(img, { height: o.height, skyTol: o.skyTol, invert: o.invert, detail: 0, bands: 1, skySamples: o.skySamples, buildSamples: o.buildSamples, outline: o.outline });
     const { cov, Wp, Hp, PX, lab, valid } = t.debug;
     let x0 = Wp, x1 = 0;
     for (let x = 0; x < Wp; x++) if (valid[x]) { if (x < x0) x0 = x; x1 = x; }

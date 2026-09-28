@@ -11,6 +11,13 @@ The DB style isn't free illustration. Every graphic is made of **vertical 2 dp b
 
 Claude (vision) makes the plan: a JSON list of shapes in dp plus the row breaks. The renderer draws it and the validator checks every bar. The export is SVG, where 1 unit = 1 dp = 1 px in Figma.
 
+### Photo tools
+
+- **Crop:** drag across the photo to crop it to the landmark.
+- **Outline:** click around the landmark to trace a polygon. To close it, click the first point, double-click, or press Enter. Everything outside the outline counts as sky, so trees, cars and neighbouring buildings drop out of the silhouette. You can draw several outlines for separate parts. Sky picks inside an outline still cut out sky seen through arches. Backspace removes the last point and Esc drops an open outline.
+- **Sky / Building:** click to teach the colour model what sky and building look like.
+- **Undo / Redo** (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z or Ctrl+Y) steps back through every photo edit: crop, outline points, picks, and the silhouette sliders (one step per drag). Each photo keeps its own edits, and undo switches to the photo it changes.
+
 ### Adjustments (no new Claude call)
 
 These reshape the plan before the renderer runs, and they never loosen the construction rules:
@@ -33,7 +40,7 @@ server/server.js       team server: password login + Anthropic API proxy (compan
 render.yaml            one-click Render deployment
 figma/                 Figma plugin: manifest.json, code.js, ui.src.html → build.py → ui.html
 data/examples_dp.json  the 21 DB reference landmarks, pulled from the backlight PDFs as exact dp bars
-test/                  node test harness (validator + trace previews), Playwright UI checks
+test/                  node test harness (validator + trace previews), Playwright UI checks (outline_test.js: outline + undo/redo)
 build.py               inlines the core (and sample data) into the web page and the plugin UI
 ```
 
@@ -109,5 +116,3 @@ Bands are written as `{from, to, shift}`, with `shift` set to 0 or 2. The prompt
 - Give Claude the trace mask as extra context (hybrid).
 - Add a skyline composer that combines 3 landmarks at the same scale on a shared baseline.
 - Before rollout, confirm the grey tones and Cold Black hex with the DB colour spec.
-   ## Workflow Test
-   Polygon selection and undo/redo are now live.
