@@ -17,12 +17,18 @@ Claude (vision) makes the plan: a JSON list of shapes in dp plus the row breaks.
 - **Outline:** click around the landmark to trace a polygon. To close it, click the first point, double-click, or press Enter. Everything outside the outline counts as sky, so trees, cars and neighbouring buildings drop out of the silhouette. You can draw several outlines for separate parts. Sky picks inside an outline still cut out sky seen through arches. Backspace removes the last point and Esc drops an open outline.
 - **Sky / Building:** click to teach the colour model what sky and building look like.
 - **Undo / Redo** (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z or Ctrl+Y) steps back through every photo edit: crop, outline points, picks, and the silhouette sliders (one step per drag). Each photo keeps its own edits, and undo switches to the photo it changes.
+- **Expand** (the button on the photo, or E) opens a full-screen editor with the same tools, the thumbnails and the silhouette. Zoom with + / −, Ctrl/⌘ + scroll or the zoom buttons (up to 4× the photo's own pixels); scroll or hold Space and drag to pan; 0 fits the photo. C, O, S and B switch tools. Outline points can be dragged to adjust them.
+
+### Several photos
+
+Up to 4 photos per landmark. Photo 1 (or the one set with **Use as main view**) sets the proportions; the silhouette and the measured openings come from it. For each photo, pick what it shows (front, side, back, other angle, detail close-up, aerial) and add a short caption, e.g. "rose window" or "count the arcade arches". Claude gets every photo labelled with its role and caption, cross-checks them (a feature seen in two photos is architecture, one seen once may be clutter), draws the elevation of the main view and uses close-ups for the fine detail. Its reading of the photos appears under **Read from the photos** next to the draft.
 
 ### Adjustments (no new Claude call)
 
 These reshape the plan before the renderer runs, and they never loosen the construction rules:
 
-- **Openings & detail:** opening size (50–160 %), window density (50–200 %), and a simplify slider that removes the smallest openings first.
+- **Detail:** Essential, Standard or Rich. Claude tags every part and row of the plan with a level (1 essential silhouette and masses, 2 standard openings and frames, 3 rich tracery, lancets, spire breaks and extra rows); the slider shows the parts up to that level and merges finer rows into the row below. The parts list shows each part's level.
+- **Openings:** opening size (50–160 %), window density (50–200 %), and a simplify slider that removes the smallest openings first.
 - **Rows:** fewer or more rows (merge the thinnest / split the tallest), row offset on/off, a 1 dp or 4 dp gap between rows, and an optional plinth row.
 - **Parts & symmetry:** switch off any part Claude drew (hover to highlight it in the web tool), and mirror the left or right half.
 
@@ -40,7 +46,8 @@ server/server.js       team server: password login + Anthropic API proxy (compan
 render.yaml            one-click Render deployment
 figma/                 Figma plugin: manifest.json, code.js, ui.src.html → build.py → ui.html
 data/examples_dp.json  the 21 DB reference landmarks, pulled from the backlight PDFs as exact dp bars
-test/                  node test harness (validator + trace previews), Playwright UI checks (outline_test.js: outline + undo/redo)
+test/                  node test harness (validator + trace previews + detail levels), Playwright UI checks
+                       (outline_test.js: outline + undo/redo, editor_test.js: expanded editor)
 build.py               inlines the core (and sample data) into the web page and the plugin UI
 ```
 
@@ -100,9 +107,16 @@ To change the password, update `TEAM_PASSWORD` in Render and redeploy. Existing 
 
 The coordinates are in dp, with the origin at the bottom left and y pointing up. Shapes are applied in order: `add` fills an area and `cut` removes one.
 
-Shape types: `rect`, `poly`, `gable`, `spire`, `dome`, `ellipse`, `arch`, and `windows` (a grid of openings).
+Shape types: `rect`, `poly`, `gable`, `spire`, `dome`, `ellipse`, `arch`, `pointed` (Gothic arch), and `windows` (a grid of openings, with `top` flat, round or pointed).
 
-Bands are written as `{from, to, shift}`, with `shift` set to 0 or 2. The prompt is in `buildPrompt()`. Designers can also edit the JSON directly in both front ends.
+Two more ops shape the bar pattern instead of the area:
+
+- `offset`: bars inside switch to the other 2 dp phase of their row. Designers use this for framed elements such as tracery panels in a tower or the nave front between towers.
+- `pier` (with `shift` 0 or 2, on a 2 dp wide rect): that bar runs straight through the row gaps, like tower corners and buttresses. Neighbouring row bars are trimmed so every rule still holds.
+
+Every shape and band can carry `level` 1–3 (see Detail above). Untagged masses count as level 1, untagged openings as level 2.
+
+Bands are written as `{from, to, shift, level}`, with `shift` set to 0 or 2. The prompt is in `buildPrompt()`. It includes `WORKED_EXAMPLE`, the designer-made St. Petri Dom (Bremen) graphic rebuilt as a plan (86 × 180 dp, 9 rows at Rich). At Rich the plan matches the designer's bars on 172 of 180 dp rows, so Claude sees the density and the techniques DB designers use. The same plan is the St. Petri Dom example in the tool. Designers can also edit the JSON directly in both front ends.
 
 ## What the reference set taught us
 

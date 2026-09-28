@@ -81,11 +81,22 @@
         const dx = x - cx, dy = y - spring;
         return dx * dx + dy * dy <= r * r;
       }
-      case 'windows': { // grid of openings inside x,y,w,h
+      case 'pointed': { // Gothic (equilateral) pointed arch: x,y (bottom-left), w, h (total height, apex included)
+        if (x < s.x || x >= s.x + s.w || y < s.y || y > s.y + s.h) return false;
+        const rise = Math.min(s.h, s.w * 0.866), spring = s.y + s.h - rise;
+        if (y < spring) return true;
+        const d = (y - spring) / rise * s.w * 0.866; // height above the springing on a true equilateral arch
+        return Math.abs(x - (s.x + s.w / 2)) <= Math.sqrt(Math.max(0, s.w * s.w - d * d)) - s.w / 2;
+      }
+      case 'windows': { // grid of openings inside x,y,w,h; "top": flat (default) | round | pointed
         if (x < s.x || x >= s.x + s.w || y < s.y || y >= s.y + s.h) return false;
         const cols = Math.max(1, s.cols | 0), rows = Math.max(1, s.rows | 0);
         const cw = s.w / cols, rh = s.h / rows;
         const fx = s.fillX != null ? s.fillX : 0.5, fy = s.fillY != null ? s.fillY : 0.6;
+        if (s.top === 'round' || s.top === 'pointed') { // each opening is an arch standing in its cell
+          const ow = cw * fx, oh = rh * fy, u = ((x - s.x) % cw) - cw / 2, v = ((y - s.y) % rh) - (rh - oh) / 2;
+          return shapeHit({ type: s.top === 'round' ? 'arch' : 'pointed', x: -ow / 2, y: 0, w: ow, h: oh }, u, v);
+        }
         const lx = ((x - s.x) % cw) / cw, ly = ((y - s.y) % rh) / rh;
         return Math.abs(lx - 0.5) <= fx / 2 && Math.abs(ly - 0.5) <= fy / 2;
       }
@@ -113,6 +124,7 @@
       const xs = x - sc.offsetX, ys = sc.height - yTop; // to scene coords (bottom-up)
       let v = 0;
       for (const s of sc.shapes) {
+        if (s.op === 'offset' || s.op === 'pier') continue;
         if (shapeHit(s, xs, ys)) { v = s.op === 'cut' ? 0 : 1; continue; }
         const g = +s.gap || 0; // "gap": clear a margin around the part so it reads in front of what is behind it
         if (g > 0 && s.op !== 'cut') {
@@ -125,15 +137,49 @@
     };
   }
 
-  /** Scene bands (bottom-up {from,to,shift}) → top-down band list. */
-  function sceneBands(sc) {
+  /** Detail level of a shape or band: 1 essential, 2 standard, 3 fine. Untagged masses are 1, untagged openings 2. */
+  const levelOf = (s) => { const l = Math.round(+s.level); return l >= 1 && l <= 3 ? l : (s.op || (s.type === 'windows' ? 'cut' : 'add')) === 'cut' ? 2 : 1; };
+  const bandLevel = (d) => { const l = Math.round(+d.level); return l >= 1 && l <= 3 ? l : 1; };
+
+  /** Bottom-up scene bands: a band above the detail level merges into the band below it (the lowest one into the band above). */
+  function mergeFineBands(list, detail) {
+    const src = list.slice().sort((a, b) => a.from - b.from), out = [];
+    let merged = false, pending = null;
+    for (const d of src) {
+      if (bandLevel(d) <= detail) { const t = Object.assign({}, d); if (pending != null) { t.from = pending; pending = null; } out.push(t); continue; }
+      merged = true;
+      if (out.length) out[out.length - 1].to = Math.max(out[out.length - 1].to, d.to);
+      else pending = pending == null ? d.from : pending;
+    }
+    if (pending != null && out.length) out[0].from = Math.min(out[0].from, pending);
+    return { bands: out.length ? out : src.slice(0, 1).map((d) => Object.assign({}, d, { level: 1 })), merged };
+  }
+
+  /** fn(x, yTop) → true inside an "offset" region (bars there use the other 2 dp phase), or null if the scene has none. */
+  function offsetSampler(sc) {
+    const regs = sc.shapes.filter((s) => s.op === 'offset');
+    if (!regs.length) return null;
+    return (x, yTop) => { const xs = x - sc.offsetX, ys = sc.height - yTop; return regs.some((s) => shapeHit(s, xs, ys)); };
+  }
+
+  /** Pier regions: [{ shift, inside(x, yTop) }]. Bars in a pier run straight through the row gaps on the pier's own phase. */
+  function pierRegions(sc) {
+    return sc.shapes.filter((s) => s.op === 'pier').map((s) => ({
+      shift: s.shift ? RULES.rowShift : 0,
+      inside: (x, yTop) => shapeHit(s, x - sc.offsetX, sc.height - yTop)
+    }));
+  }
+
+  /** Scene bands (bottom-up {from,to,shift,level}) → top-down band list. */
+  function sceneBands(sc, detail) {
     const H = sc.height;
-    let b = sc.bands
-      .map((d) => ({ y0: H - Math.round(d.to), y1: H - Math.round(d.from), shift: d.shift ? RULES.rowShift : 0 }))
-      .map((d) => ({ y0: clamp(d.y0, 0, H), y1: clamp(d.y1, 0, H), shift: d.shift }))
+    const m = mergeFineBands(sc.bands, detail == null ? 3 : detail);
+    let b = m.bands
+      .map((d) => ({ y0: H - Math.round(d.to), y1: H - Math.round(d.from), shift: d.shift ? RULES.rowShift : 0, level: bandLevel(d) }))
+      .map((d) => ({ y0: clamp(d.y0, 0, H), y1: clamp(d.y1, 0, H), shift: d.shift, level: d.level }))
       .filter((d) => d.y1 - d.y0 >= 2)
       .sort((a, b) => a.y0 - b.y0);
-    return fillBands(b, H);
+    return fillBands(b, H); // merged rows keep the shift of the row they joined
   }
 
   /** Make bands contiguous from 0..H (gaps get the neighbour's opposite shift). */
@@ -141,13 +187,13 @@
     const out = [];
     let y = 0;
     for (const d of b) {
-      if (d.y0 > y) out.push({ y0: y, y1: d.y0, shift: d.shift ? 0 : RULES.rowShift });
+      if (d.y0 > y) out.push({ y0: y, y1: d.y0, shift: d.shift ? 0 : RULES.rowShift, level: 1 });
       const y0 = Math.max(y, d.y0);
-      if (d.y1 > y0) out.push({ y0, y1: d.y1, shift: d.shift });
+      if (d.y1 > y0) out.push({ y0, y1: d.y1, shift: d.shift, level: d.level || 1 });
       y = Math.max(y, d.y1);
     }
-    if (y < H) out.push({ y0: y, y1: H, shift: out.length ? (out[out.length - 1].shift ? 0 : RULES.rowShift) : 0 });
-    return out.length ? out : [{ y0: 0, y1: H, shift: 0 }];
+    if (y < H) out.push({ y0: y, y1: H, shift: out.length ? (out[out.length - 1].shift ? 0 : RULES.rowShift) : 0, level: 1 });
+    return out.length ? out : [{ y0: 0, y1: H, shift: 0, level: 1 }];
   }
 
   // ---------------------------------------------------------------------------
@@ -214,23 +260,52 @@
   function render(W, H, cover, bands, opts) {
     const o = Object.assign({ threshold: 0.5, sample: 'avg', rowGap: RULES.vGapIdeal }, opts || {});
     o.rowGap = o.rowGap >= 4 ? RULES.vGapRecommended : RULES.vGapIdeal;
-    const bars = [];
+    const bars = [], off = o.offset; // off(x, y): inside an offset region the bars move to the other 2 dp phase
+    const covered = (x, y) => { const a = cover(x + 0.5, y + 0.5), b = cover(x + 1.5, y + 0.5); return (o.sample === 'max' ? Math.max(a, b) : (a + b) / 2) >= o.threshold; };
     bands.forEach((band, bi) => {
       const top = band.y0 > 0 ? band.y0 + o.rowGap : band.y0; // 1 dp gap between rows (4 dp as a deliberate gap)
-      for (let x = band.shift; x + RULES.stroke <= W; x += RULES.pitch) {
-        // column cells: coverage of the 2 dp wide column per dp row (sample 2 points)
+      const column = (x, alt) => {
+        // column cells: coverage of the 2 dp wide column per dp row. A row-phase column steps aside inside an offset
+        // region; an other-phase column only exists where it and both its neighbours are inside one (keeps the 2 dp gap).
         const on = [];
         for (let y = top; y < band.y1; y++) {
-          const a = cover(x + 0.5, y + 0.5), b = cover(x + 1.5, y + 0.5);
-          const c = o.sample === 'max' ? Math.max(a, b) : (a + b) / 2;
-          on.push(c >= o.threshold ? 1 : 0);
+          const yc = y + 0.5, inOff = off ? off(x + 1, yc) : false;
+          const here = alt ? inOff && off(x - 1, yc) && off(x + 3, yc) : !inOff;
+          on.push(here && covered(x, y) ? 1 : 0);
         }
-        let runs = toRuns(on, top);
-        runs = cleanRuns(runs, top, band.y1);
-        for (const r of runs) bars.push({ x, y: r[0], w: RULES.stroke, h: r[1] - r[0], band: bi });
-      }
+        for (const r of cleanRuns(toRuns(on, top), top, band.y1)) bars.push({ x, y: r[0], w: RULES.stroke, h: r[1] - r[0], band: bi });
+      };
+      for (let x = band.shift; x + RULES.stroke <= W; x += RULES.pitch) column(x, false);
+      if (off) for (let x = (band.shift + RULES.rowShift) % RULES.pitch; x + RULES.stroke <= W; x += RULES.pitch) column(x, true);
     });
-    return { W, H, bars, bands };
+    const out = o.piers && o.piers.length ? withPiers(W, H, bars, bands, o.piers, covered) : bars;
+    out.sort((a, b) => a.band - b.band || a.x - b.x || a.y - b.y);
+    return { W, H, bars: out, bands };
+  }
+
+  /** Continuous pier bars (ignore row gaps), then trim the row bars around them so every rule still holds. */
+  function withPiers(W, H, bars, bands, piers, covered) {
+    const bandAt = (y) => { const i = bands.findIndex((b) => y >= b.y0 && y < b.y1); return i < 0 ? bands.length - 1 : i; };
+    const pbars = [];
+    for (const p of piers) for (let x = p.shift; x + RULES.stroke <= W; x += RULES.pitch) {
+      const on = []; let any = false;
+      for (let y = 0; y < H; y++) { const v = p.inside(x + 1, y + 0.5) && covered(x, y) ? 1 : 0; on.push(v); any = any || !!v; }
+      if (!any) continue;
+      for (const r of cleanRuns(toRuns(on, 0), 0, H)) if (!pbars.some((q) => Math.abs(q.x - x) < RULES.pitch && q.y < r[1] && r[0] < q.y + q.h))
+        pbars.push({ x, y: r[0], w: RULES.stroke, h: r[1] - r[0], band: bandAt(r[0]), pier: true });
+    }
+    const out = [];
+    for (const b of bars) {
+      const keep = new Uint8Array(b.h).fill(1);
+      for (const q of pbars) {
+        const dx = Math.abs(q.x - b.x); if (dx >= RULES.pitch) continue;
+        const m = dx === 0 ? RULES.vGapIdeal : 0; // same column: keep a 1 dp gap; neighbour column: no vertical overlap
+        for (let y = Math.max(b.y, q.y - m); y < Math.min(b.y + b.h, q.y + q.h + m); y++) keep[y - b.y] = 0;
+      }
+      if (keep.every(Boolean)) { out.push(b); continue; }
+      for (const r of toRuns(keep, b.y)) if (r[1] - r[0] >= RULES.minLen) out.push({ x: b.x, y: r[0], w: b.w, h: r[1] - r[0], band: b.band });
+    }
+    return out.concat(pbars);
   }
 
   function toRuns(on, off) {
@@ -352,25 +427,24 @@
    * Engine A with designer adjustments. `mods` never touch the construction rules;
    * they reshape the plan (openings, rows, parts, symmetry) before the renderer runs.
    */
-  const DEFAULT_MODS = { openingSize: 1, density: 1, simplify: 0, rowDelta: 0, rowOffset: true, rowGap: 1, plinth: false, hidden: [], mirror: 'off' };
+  const DEFAULT_MODS = { detail: 3, openingSize: 1, density: 1, simplify: 0, rowDelta: 0, rowOffset: true, rowGap: 1, plinth: false, hidden: [], mirror: 'off' };
 
   function fromScene(scene, mods) {
     const m = Object.assign({}, DEFAULT_MODS, (scene && scene.render) || {}, mods || {});
     const sc = normalizeScene(applyShapeMods(scene, m));
     const W = sc.width, H = sc.height;
-    let sampler = sceneSampler(sc);
+    let sampler = sceneSampler(sc), offset = offsetSampler(sc), piers = pierRegions(sc);
     if (m.mirror === 'left' || m.mirror === 'right') {
-      const base = sampler, half = W / 2;
-      sampler = m.mirror === 'left'
-        ? (x, y) => base(x > half ? W - x : x, y)
-        : (x, y) => base(x < half ? W - x : x, y);
+      const half = W / 2, mir = (f) => f && (m.mirror === 'left' ? (x, y) => f(x > half ? W - x : x, y) : (x, y) => f(x < half ? W - x : x, y));
+      sampler = mir(sampler); offset = mir(offset); piers = piers.map((p) => ({ shift: p.shift, inside: mir(p.inside) }));
     }
-    let bands = sc.bands.length ? sceneBands(sc) : detectBands(gridFromSampler(W, H, sampler), W, H);
+    let bands = sc.bands.length ? sceneBands(sc, m.detail) : detectBands(gridFromSampler(W, H, sampler), W, H);
     bands = applyRowMods(bands, H, m);
-    const res = render(W, H, sampler, bands, { rowGap: m.rowGap });
+    const res = render(W, H, sampler, bands, { rowGap: m.rowGap, offset, piers });
     res.scene = sc;
     res.mods = m;
     res.openings = sc._openings;
+    res.detail = sc._detail;
     return res;
   }
 
@@ -378,7 +452,7 @@
   function openingArea(s) {
     switch (s.type) {
       case 'windows': return (s.w / Math.max(1, s.cols | 0)) * (s.fillX != null ? s.fillX : 0.5) * (s.h / Math.max(1, s.rows | 0)) * (s.fillY != null ? s.fillY : 0.6);
-      case 'rect': case 'arch': return s.w * s.h;
+      case 'rect': case 'arch': case 'pointed': return s.w * s.h;
       case 'ellipse': return Math.PI * s.rx * s.ry;
       case 'dome': return Math.PI * s.rx * s.ry / 2;
       case 'gable': case 'spire': return s.w * s.h / 2;
@@ -395,7 +469,7 @@
         t.fillX = clamp((t.fillX != null ? t.fillX : 0.5) * f, 0.15, 0.95);
         t.fillY = clamp((t.fillY != null ? t.fillY : 0.6) * f, 0.15, 0.95);
         break;
-      case 'arch': { const cx = t.x + t.w / 2; t.w = r1(t.w * f); t.h = r1(t.h * f); t.x = r1(cx - t.w / 2); break; } // stays on its base
+      case 'arch': case 'pointed': { const cx = t.x + t.w / 2; t.w = r1(t.w * f); t.h = r1(t.h * f); t.x = r1(cx - t.w / 2); break; } // stays on its base
       case 'rect': { const cx = t.x + t.w / 2, cy = t.y + t.h / 2; t.w = r1(t.w * f); t.h = r1(t.h * f); t.x = r1(cx - t.w / 2); t.y = t.y <= 0.5 ? t.y : r1(cy - t.h / 2); break; }
       case 'ellipse': case 'dome': t.rx = r1(t.rx * f); t.ry = r1(t.ry * f); break;
       case 'gable': { const cx = t.x + t.w / 2; t.w = r1(t.w * f); t.h = r1(t.h * f); t.x = r1(cx - t.w / 2); break; }
@@ -416,6 +490,11 @@
     const hidden = new Set(m.hidden || []);
     let shapes = (sc.shapes || []).map((s, i) => (s && s.type ? Object.assign({}, s, { _i: i }) : null)).filter(Boolean);
     shapes = shapes.filter((s) => !hidden.has(s._i));
+    const detail = clamp(Math.round(m.detail == null ? 3 : m.detail), 1, 3);
+    const byLevel = [0, 0, 0, 0]; shapes.forEach((s) => byLevel[levelOf(s)]++);
+    sc._detail = { level: detail, hidden: shapes.filter((s) => levelOf(s) > detail).length, byLevel: byLevel.slice(1),
+      bandsByLevel: [1, 2, 3].map((l) => (sc.bands || []).filter((d) => bandLevel(d) === l).length) };
+    shapes = shapes.filter((s) => levelOf(s) <= detail);
     const isCut = (s) => (s.op || (s.type === 'windows' ? 'cut' : 'add')) === 'cut';
     shapes = shapes.map((s) => {
       if (!isCut(s)) return s;
@@ -446,20 +525,20 @@
       let i = 0; b.forEach((x, k) => { if (x.y1 - x.y0 < b[i].y1 - b[i].y0) i = k; });
       const j = i === 0 ? 1 : i === b.length - 1 ? i - 1 : ((b[i - 1].y1 - b[i - 1].y0) <= (b[i + 1].y1 - b[i + 1].y0) ? i - 1 : i + 1);
       const lo = Math.min(i, j), hi = Math.max(i, j);
-      b.splice(lo, 2, { y0: b[lo].y0, y1: b[hi].y1, shift: b[hi].shift });
+      b.splice(lo, 2, { y0: b[lo].y0, y1: b[hi].y1, shift: b[hi].shift, level: Math.min(b[lo].level || 1, b[hi].level || 1) });
       changed = true;
     }
     for (let n = 0; n < m.rowDelta; n++) { // split the tallest row in the middle
       let i = 0; b.forEach((x, k) => { if (x.y1 - x.y0 > b[i].y1 - b[i].y0) i = k; });
       const h = b[i].y1 - b[i].y0; if (h < minBand * 2) break;
       const mid = b[i].y0 + Math.round(h / 2);
-      b.splice(i, 1, { y0: b[i].y0, y1: mid, shift: 0 }, { y0: mid, y1: b[i].y1, shift: 0 });
+      b.splice(i, 1, { y0: b[i].y0, y1: mid, shift: 0, level: b[i].level || 1 }, { y0: mid, y1: b[i].y1, shift: 0, level: b[i].level || 1 });
       changed = true;
     }
     if (m.plinth) {
       const ph = H >= 120 ? 8 : 6, last = b[b.length - 1];
       if (last && last.y1 - last.y0 >= ph + minBand) {
-        b.splice(b.length - 1, 1, { y0: last.y0, y1: H - ph, shift: 0 }, { y0: H - ph, y1: H, shift: 0 });
+        b.splice(b.length - 1, 1, { y0: last.y0, y1: H - ph, shift: 0, level: last.level || 1 }, { y0: H - ph, y1: H, shift: 0, level: 1 });
         changed = true;
       }
     }
@@ -475,7 +554,7 @@
     const sc = res.scene, H = sc.height;
     const out = JSON.parse(JSON.stringify(scene));
     out.shapes = sc.shapes.map((s) => { const t = Object.assign({}, s); delete t._i; return t; });
-    out.bands = res.bands.slice().reverse().map((b) => ({ from: H - b.y1, to: H - b.y0, shift: b.shift ? 2 : 0 }));
+    out.bands = res.bands.slice().reverse().map((b) => Object.assign({ from: H - b.y1, to: H - b.y0, shift: b.shift ? 2 : 0 }, b.level > 1 ? { level: b.level } : {}));
     out.render = { mirror: m.mirror, rowGap: m.rowGap };
     return out;
   }
@@ -881,34 +960,48 @@
   // 10. The AI prompt (Engine A)
   // ---------------------------------------------------------------------------
   const EXAMPLE_SCENE = {
+    analysis: {
+      photos: 'Photo 1: west front, frontal, lower storey partly hidden by trees.',
+      structure: 'Nave front between two equal towers; each tower has two stages and a spire; one pointed portal.',
+      symmetry: 'Symmetric about the portal axis.',
+      rows: 'Plinth 0–6, nave 6–46, cornice 46–52, tower stages 52–74 and 74–96, spires 96–120.'
+    },
     landmark: 'Example – twin-tower church',
     confidence: 'high',
     width: 70, height: 120,
     bands: [
-      { from: 0, to: 6, shift: 0 },
-      { from: 6, to: 46, shift: 2 },
-      { from: 46, to: 52, shift: 0 },
-      { from: 52, to: 96, shift: 2 },
-      { from: 96, to: 120, shift: 0 }
+      { from: 0, to: 6, shift: 0, level: 1 },
+      { from: 6, to: 46, shift: 2, level: 1 },
+      { from: 46, to: 52, shift: 0, level: 1 },
+      { from: 52, to: 74, shift: 2, level: 1 },
+      { from: 74, to: 96, shift: 0, level: 2 },
+      { from: 96, to: 120, shift: 0, level: 1 }
     ],
     shapes: [
-      { type: 'rect', x: 0, y: 0, w: 70, h: 46, note: 'nave / main body' },
-      { type: 'rect', x: 2, y: 46, w: 20, h: 50, note: 'left tower' },
-      { type: 'rect', x: 48, y: 46, w: 20, h: 50, note: 'right tower' },
-      { type: 'spire', cx: 12, y: 96, w: 20, h: 24, note: 'left spire' },
-      { type: 'spire', cx: 58, y: 96, w: 20, h: 24, note: 'right spire' },
-      { type: 'gable', x: 22, y: 46, w: 26, h: 16, note: 'central gable' },
-      { type: 'arch', x: 27, y: 0, w: 16, h: 26, op: 'cut', note: 'portal' },
-      { type: 'windows', x: 4, y: 60, w: 16, h: 28, cols: 2, rows: 2, fillX: 0.5, fillY: 0.6, note: 'tower openings L' },
-      { type: 'windows', x: 50, y: 60, w: 16, h: 28, cols: 2, rows: 2, fillX: 0.5, fillY: 0.6, note: 'tower openings R' }
+      { type: 'rect', x: 0, y: 0, w: 70, h: 46, level: 1, note: 'nave / main body' },
+      { type: 'rect', x: 2, y: 46, w: 20, h: 50, level: 1, note: 'left tower' },
+      { type: 'rect', x: 48, y: 46, w: 20, h: 50, level: 1, note: 'right tower' },
+      { type: 'spire', cx: 12, y: 96, w: 20, h: 24, level: 1, note: 'left spire' },
+      { type: 'spire', cx: 58, y: 96, w: 20, h: 24, level: 1, note: 'right spire' },
+      { type: 'gable', x: 22, y: 46, w: 26, h: 16, level: 1, note: 'central gable' },
+      { type: 'pointed', x: 27, y: 0, w: 16, h: 26, op: 'cut', level: 1, note: 'portal' },
+      { type: 'windows', x: 4, y: 60, w: 16, h: 28, cols: 2, rows: 2, fillX: 0.5, fillY: 0.6, top: 'pointed', level: 2, note: 'tower openings L' },
+      { type: 'windows', x: 50, y: 60, w: 16, h: 28, cols: 2, rows: 2, fillX: 0.5, fillY: 0.6, top: 'pointed', level: 2, note: 'tower openings R' },
+      { type: 'rect', x: 0, y: 0, w: 2, h: 46, op: 'pier', shift: 0, level: 3, note: 'corner buttress L' },
+      { type: 'rect', x: 68, y: 0, w: 2, h: 46, op: 'pier', shift: 0, level: 3, note: 'corner buttress R' }
     ],
     retained: ['two west towers with spires', 'central gable', 'arched portal'],
     uncertain: [],
     cleanup: []
   };
 
+  /** A DB designer's graphic (St. Petri Dom, Bremen) rebuilt as a plan: the techniques of the rich detail level. */
+  const WORKED_EXAMPLE = {"landmark":"St. Petri Dom, Bremen","confidence":"high","width":86,"height":180,"bands":[{"from":0,"to":31,"shift":0,"level":1,"note":"portals + plinth"},{"from":31,"to":48,"shift":2,"level":1,"note":"facade, rose window"},{"from":48,"to":60,"shift":0,"level":2,"note":"facade top"},{"from":60,"to":76,"shift":0,"level":1,"note":"tower stage 1, gable"},{"from":76,"to":87,"shift":0,"level":3,"note":"tower stage 2"},{"from":87,"to":101,"shift":0,"level":2,"note":"tower stage 3"},{"from":101,"to":115,"shift":0,"level":2,"note":"belfry"},{"from":115,"to":125,"shift":2,"level":1,"note":"spire base tier"},{"from":125,"to":180,"shift":0,"level":1,"note":"spire tiers"}],"shapes":[{"type":"rect","x":0,"y":0,"w":86,"h":60,"level":1,"note":"west front"},{"type":"rect","x":4,"y":60,"w":26,"h":65,"level":1,"note":"left tower"},{"type":"rect","x":56,"y":60,"w":26,"h":65,"level":1,"note":"right tower"},{"type":"rect","x":8,"y":125,"w":18,"h":17,"level":1,"note":"left spire tier"},{"type":"rect","x":12,"y":142,"w":10,"h":19,"level":1,"note":"left spire top"},{"type":"rect","x":16,"y":161,"w":2,"h":19,"level":1,"note":"left finial"},{"type":"rect","x":60,"y":125,"w":18,"h":17,"level":1,"note":"right spire tier"},{"type":"rect","x":64,"y":142,"w":10,"h":19,"level":1,"note":"right spire top"},{"type":"rect","x":68,"y":161,"w":2,"h":19,"level":1,"note":"right finial"},{"type":"poly","points":[[31,60],[55,60],[55,67],[51,67],[51,70],[47,70],[47,76],[39,76],[39,70],[35,70],[35,67],[31,67]],"level":1,"note":"stepped central gable"},{"type":"ellipse","cx":43,"cy":45,"rx":9.5,"ry":9,"op":"cut","level":1,"note":"rose window"},{"type":"windows","x":3,"y":0,"w":80,"h":20,"cols":4,"rows":1,"fillX":0.65,"fillY":1,"top":"pointed","level":2,"note":"four pointed portals"},{"type":"windows","x":9,"y":101,"w":16,"h":9,"cols":2,"rows":1,"fillX":0.5,"fillY":1,"level":2,"note":"belfry lancets L"},{"type":"windows","x":61,"y":101,"w":16,"h":9,"cols":2,"rows":1,"fillX":0.5,"fillY":1,"level":2,"note":"belfry lancets R"},{"type":"rect","x":0,"y":0,"w":2,"h":59,"op":"pier","shift":0,"level":2,"note":"buttress L runs through"},{"type":"rect","x":84,"y":0,"w":2,"h":59,"op":"pier","shift":0,"level":2,"note":"buttress R runs through"},{"type":"rect","x":4,"y":60,"w":2,"h":55,"op":"pier","shift":0,"level":2,"note":"tower frame L outer"},{"type":"rect","x":28,"y":60,"w":2,"h":55,"op":"pier","shift":0,"level":2,"note":"tower frame L inner"},{"type":"rect","x":56,"y":60,"w":2,"h":55,"op":"pier","shift":0,"level":2,"note":"tower frame R inner"},{"type":"rect","x":80,"y":60,"w":2,"h":55,"op":"pier","shift":0,"level":2,"note":"tower frame R outer"},{"type":"rect","x":29,"y":48,"w":29,"h":12,"op":"offset","level":2,"note":"nave front panel"},{"type":"rect","x":30,"y":31,"w":2,"h":29,"op":"pier","shift":2,"level":3,"note":"nave pier L"},{"type":"rect","x":54,"y":31,"w":2,"h":29,"op":"pier","shift":2,"level":3,"note":"nave pier R"},{"type":"rect","x":41,"y":76,"w":4,"h":4,"level":2,"note":"gable finial"},{"type":"rect","x":39,"y":76,"w":8,"h":4,"op":"offset","level":2,"note":"gable finial offset"},{"type":"rect","x":12,"y":60,"w":10,"h":11,"op":"offset","level":3,"note":"tracery panel L1"},{"type":"rect","x":8,"y":71,"w":18,"h":5,"op":"offset","level":3,"note":"tracery head L1"},{"type":"rect","x":64,"y":60,"w":10,"h":11,"op":"offset","level":3,"note":"tracery panel R1"},{"type":"rect","x":60,"y":71,"w":18,"h":5,"op":"offset","level":3,"note":"tracery head R1"},{"type":"rect","x":12,"y":87,"w":10,"h":9,"op":"offset","level":3,"note":"tracery panel L2"},{"type":"rect","x":8,"y":96,"w":18,"h":5,"op":"offset","level":3,"note":"tracery head L2"},{"type":"rect","x":64,"y":87,"w":10,"h":9,"op":"offset","level":3,"note":"tracery panel R2"},{"type":"rect","x":60,"y":96,"w":18,"h":5,"op":"offset","level":3,"note":"tracery head R2"},{"type":"windows","x":7,"y":31,"w":32,"h":3,"cols":4,"rows":1,"fillX":0.5,"fillY":1,"level":3,"note":"arcade frieze L"},{"type":"windows","x":47,"y":31,"w":32,"h":3,"cols":4,"rows":1,"fillX":0.5,"fillY":1,"level":3,"note":"arcade frieze R"},{"type":"rect","x":13,"y":119,"w":8,"h":6,"op":"cut","level":3,"note":"spire base opening L"},{"type":"rect","x":65,"y":119,"w":8,"h":6,"op":"cut","level":3,"note":"spire base opening R"},{"type":"rect","x":11,"y":132,"w":4,"h":1,"op":"cut","level":3,"note":"spire tick L"},{"type":"rect","x":19,"y":132,"w":4,"h":1,"op":"cut","level":3,"note":"spire tick L"},{"type":"rect","x":15,"y":137,"w":4,"h":1,"op":"cut","level":3,"note":"spire tick L"},{"type":"rect","x":63,"y":132,"w":4,"h":1,"op":"cut","level":3,"note":"spire tick R"},{"type":"rect","x":71,"y":132,"w":4,"h":1,"op":"cut","level":3,"note":"spire tick R"},{"type":"rect","x":67,"y":137,"w":4,"h":1,"op":"cut","level":3,"note":"spire tick R"}],"retained":["twin towers with stepped spires and finials","stepped central gable","rose window","four pointed portals","buttresses and tower frames running through the rows"],"uncertain":[],"cleanup":[]};
+
+  const PHOTO_ROLES = { front: 'front view', side: 'side view', back: 'back view', angle: 'another angle', detail: 'detail close-up', aerial: 'aerial / high view' };
+
   function buildPrompt(opts) {
-    const o = Object.assign({ height: null, notes: '', previous: null, feedback: '', landmark: '', sketch: null, hasPhoto: true, photoCount: 1, features: null }, opts || {});
+    const o = Object.assign({ height: null, notes: '', previous: null, feedback: '', landmark: '', sketch: null, hasPhoto: true, photoCount: 1, photos: null, features: null }, opts || {});
     const R = RULES;
     const lines = [
       'You are the drafting assistant for Deutsche Bahn "Signature Graphics": city landmarks drawn ONLY with vertical 2 dp bars.',
@@ -921,11 +1014,11 @@
       '',
       'STYLE RULES (DB guideline):',
       `- Base size 96 × 96 dp with 3 dp safe area → a normal building is ${R.live} dp tall. Very tall towers may be up to ${R.tallMax} dp tall (height), very wide buildings up to ~180 dp wide; keep a harmonious relation to a 90 dp building.`,
-      '- Clear, stable, minimal, functional. Prioritise recognisability over completeness. Never fussy or "flimmery".',
+      '- Clear, stable, functional. Prioritise recognisability over completeness. Detail must follow the architecture and the grid, never random texture ("flimmery").',
       '- Keep only features that identify the landmark: overall silhouette, roofline, towers, domes, spires, arches, dominant window rhythm, distinctive entrance. Drop ornament, sculpture, texture, shadows, perspective distortion.',
       '- Remove foreground clutter (trees, cars, people, street furniture, neighbouring buildings) unless it is part of the landmark.',
       '- Draw a frontal, flat elevation even if the photo is in perspective. Symmetric buildings must be symmetric.',
-      '- Detail density must be even across the building. Typical good results use 3–6 bands and 0–4 window groups.',
+      '- Detail density must be even across the building (both towers, all bays at the same level of detail).',
       '- The graphic must sit on a flat baseline (y = 0) so it can be combined with other landmarks into a skyline.',
       '',
       'COORDINATES: dp, integers, origin bottom-left, y points UP. x from 0 to width, y from 0 to height.',
@@ -938,8 +1031,12 @@
       '- {"type":"dome","cx","y","rx","ry"}    upper half-ellipse sitting on y',
       '- {"type":"ellipse","cx","cy","rx","ry"}',
       '- {"type":"arch","x","y","w","h"}       rect with a round top (use op "cut" for portals, arcades, bridge arches)',
-      '- {"type":"windows","x","y","w","h","cols","rows","fillX","fillY"}  regular grid of openings; fillX/fillY = opening size as fraction of each cell (0.3–0.8)',
-      'Add a short "note" to each shape saying which part it is.',
+      '- {"type":"pointed","x","y","w","h"}    rect with a Gothic pointed top (lancets, Gothic portals, pointed arcades)',
+      '- {"type":"windows","x","y","w","h","cols","rows","fillX","fillY","top"}  regular grid of openings; fillX/fillY = opening size as fraction of each cell (0.3–1); "top": "flat" (default), "round" or "pointed"',
+      'Add a short "note" to each shape saying which part it is, and a "level" (see DETAIL LEVELS).',
+      'Two more ops shape the bar pattern itself (they do not fill or cut; the area must already be filled):',
+      '- op "offset" (usually on a rect): bars inside move to the OTHER 2 dp phase of their row. This frames an element inside a stage: a tracery panel or window group inside a tower, the nave front between two towers, the finial on a gable. The region must be at least 3 bars (≥ 10 dp) wide; its outermost row bars step aside so the 2 dp gap holds.',
+      '- op "pier" with "shift": 0 or 2 (a rect 2 dp wide over one bar column): that bar runs straight through the row gaps from the bottom to the top of the rect. Use it for corner buttresses, tower corners and frame bars. Put it exactly on a bar: x ≡ shift (mod 4), width 2. Bars of the rows next to it are trimmed automatically.',
       'Optional "gap": 4 on an added shape clears a 4 dp margin around it (removing the neighbouring bars), so the part reads IN FRONT of what lies behind it (a gable in front of a roof, a tower in front of a nave). Only use it when the part rises ABOVE what is behind it; otherwise the cleared margin leaves loose fragments.',
       '',
       'GRID ALIGNMENT (this decides whether the result looks clean or noisy):',
@@ -949,17 +1046,49 @@
       '- Step a stepped gable or tower by 4 dp per side and level, so each step removes exactly one bar on each side.',
       '- Keep roof areas as few, calm bands. Many small cuts in a roof or gable read as noise; prefer 1–2 openings per gable level.',
       '',
-      'BANDS: list of {"from","to","shift"} in y-up dp covering 0..height with no gaps. Put band borders where the architecture changes (cornices, roof lines, tower stages, bridge deck). Alternate shift 0 and 2; the bottom band has shift 0.',
+      'BANDS: list of {"from","to","shift","level"} in y-up dp covering 0..height with no gaps. Put band borders where the architecture changes (cornices, roof lines, tower stages, spire tiers, bridge deck). The bottom band has shift 0. Neighbouring bands usually alternate 0 and 2; keep the same shift where one continuous element (a spire, a tower stage with offset panels inside) spans both.',
       '',
-      'Reply with ONLY one JSON object in exactly this format (this example is a generic church, not your building):',
+      'DETAIL LEVELS (the designer switches between them with a slider, without asking you again):',
+      '- Tag every shape and every band with "level": 1 = essential (silhouette, main masses, the 4–6 main rows, the one opening that identifies the building, e.g. a rose window or the main portal), 2 = standard (portals, main window rows, tower stages, buttresses/frames), 3 = rich (the craft a DB designer adds: tracery panels as offset regions, lancets, spire tier openings, 1 dp breaks, friezes, extra rows).',
+      '- Each level must look finished on its own: level 1 alone is a clean, calm silhouette; 1+2 is a balanced standard graphic; 1+2+3 is the rich version. A band above the chosen level merges into the band below it, so level-1 bands must still describe the main architecture.',
+      '- Always deliver all three levels. For ornate landmarks (Gothic, Romanesque, Baroque, historic town halls) make level 3 generous: DB designers typically use a row every 10–17 dp in towers and façades (8–12 rows for a 150–190 dp church). Plain modern buildings may have almost nothing at level 3.',
+      '',
+      'TECHNIQUES FROM DB DESIGNERS (use them where the architecture has them):',
+      '- Spires and towers as stepped TIERS: stacked rects that narrow by one bar per side every 14–20 dp, ending in a 1-bar finial (a 2 dp wide rect on the tower axis). Crisper than one triangle.',
+      '- Frames: tower corners and buttresses as "pier" bars that run through all row gaps; the inner bars break at every row.',
+      '- Tracery: inside a tower stage an "offset" rect (panel) with a wider "offset" rect on top (head) reads as a framed Gothic window; single-bar lancets are cuts 4 dp wide centred on one bar.',
+      '- Gothic portals: "pointed" cuts 3 bars wide (w 12–13), about 20 dp tall; round portals: "arch".',
+      '- Rose window: an "ellipse" cut about 18–20 dp across, crossing a row border.',
+      '- Friezes: a 3–4 dp tall "windows" row that removes every other bar.',
+      '- Tiny breaks: 1 dp tall cuts across one or two bars (spire tiers, cornices). Use sparingly, symmetric, level 3.',
+      '',
+      'WORKED EXAMPLE of the rich level, rebuilt from a DB designer graphic (St. Petri Dom, Bremen, 86 × 180 dp, 9 rows at level 3). Learn the techniques and the density, not the building:',
+      JSON.stringify(WORKED_EXAMPLE),
+      '',
+      'Reply with ONLY one JSON object in exactly this format (this example is a generic church, not your building; it is short, yours should use all levels):',
       JSON.stringify(EXAMPLE_SCENE),
       '',
+      '"analysis" comes FIRST, before any shape: note briefly what you read from the photos ("photos"), which parts the building has and how they stack ("structure": stages, tiers, bays), "symmetry", and where the rows go ("rows"). One or two sentences each.',
       '"retained": which features you kept. "uncertain": parts that were unclear/obstructed/too ornate and got a conservative guess. "cleanup": concrete suggestions for the designer. "confidence": high | medium | low (low for ornate Baroque, heavy obstruction, poor photo).'
     ];
     if (!o.hasPhoto) {
       lines[1] = 'You cannot see the photo in this request. Instead you get the landmark name (if known) and a measured SKETCH of the cropped photo (below). Plan a simplified, recognisable construction of the building as JSON, using the sketch for proportions and positions and your own knowledge of the landmark for its characteristic features. A deterministic renderer turns your plan into the final artwork, so you describe AREAS, not lines.';
     }
-    if (o.hasPhoto && o.photoCount > 1) lines.push('', `You get ${o.photoCount} photos of the SAME landmark. Photo 1 is the main view: the sketch below was measured from it, so follow its proportions and viewpoint. Photos 2–${o.photoCount} show other angles or details; use them to understand which features matter and what hides behind clutter, not for proportions.`);
+    const photos = (Array.isArray(o.photos) ? o.photos : []).slice(0, 8), n = o.hasPhoto ? Math.max(o.photoCount || 1, photos.length || 1) : 0;
+    const clip = (t) => String(t || '').replace(/[\u0000-\u001f"]+/g, ' ').trim().slice(0, 120);
+    const role = (q, i) => (PHOTO_ROLES[q && q.role] || (i ? 'another angle' : 'front view')) + (q && clip(q.caption) ? ` – designer: "${clip(q.caption)}"` : '');
+    if (n > 1) {
+      lines.push('', `PHOTOS: you get ${n} photos of the SAME landmark, in this order:`);
+      for (let i = 0; i < n; i++) lines.push(`- Photo ${i + 1}: ${role(photos[i], i)}${i === 0 ? ' – MAIN VIEW: the sketch and measurements below come from it; follow its proportions and viewpoint' : ''}`);
+      lines.push(
+        'How to combine them:',
+        '- Cross-check before you plan: a feature seen in two or more photos is architecture; something seen in only one may be clutter, a reflection or a neighbouring building.',
+        '- Draw the elevation of the MAIN view. The other views tell you what the main view hides (behind trees, scaffolding, perspective), how parts repeat (number of bays, equal towers) and how deep things are. Never mix viewpoints into one elevation.',
+        '- Detail close-ups feed levels 2 and 3: count the openings, read the window and tracery shapes and the tier structure there, then place them on the matching part of the main view at its scale.',
+        '- In "analysis.photos" say in a few words what each photo contributed.');
+    } else if (n === 1 && photos[0] && (clip(photos[0].caption) || (photos[0].role && photos[0].role !== 'front'))) {
+      lines.push('', 'About the photo: ' + role(photos[0], 0) + '.');
+    }
     if (o.landmark) lines.push('', 'Landmark: ' + o.landmark + (o.hasPhoto ? '' : ' (use what you know about its elevation: towers, roofline, domes, spires, openings)'));
     if (o.sketch) {
       const k = o.sketch;
@@ -981,7 +1110,7 @@
   // ---------------------------------------------------------------------------
   // exports
   // ---------------------------------------------------------------------------
-  const API = { analyze, featuresText, toLab, sketch, DEFAULT_MODS, applyShapeMods, applyRowMods, bakeScene, openingArea, RULES, normalizeScene, sceneSampler, sceneBands, fillBands, gridFromSampler, detectBands, render, validate, toSVG, fromScene, trace, buildPrompt, EXAMPLE_SCENE, cleanRuns };
+  const API = { PHOTO_ROLES, WORKED_EXAMPLE, pierRegions, offsetSampler, levelOf, bandLevel, mergeFineBands, analyze, featuresText, toLab, sketch, DEFAULT_MODS, applyShapeMods, applyRowMods, bakeScene, openingArea, RULES, normalizeScene, sceneSampler, sceneBands, fillBands, gridFromSampler, detectBands, render, validate, toSVG, fromScene, trace, buildPrompt, EXAMPLE_SCENE, cleanRuns };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   root.DBSig = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -11,10 +11,10 @@ for k, g in ex.items():
     refs.append({'name': names[f][int(i)], 'W': W, 'H': H, 'b': g})
 enc = lambda f: 'data:image/jpeg;base64,' + base64.b64encode(open(f,'rb').read()).decode()
 examples = [
-  {'photos': [{'photo': enc('data/sample_dom.jpg'), 'crop': {'x':205,'y':64,'w':335,'h':758}}], 'scene': json.load(open('test/scene_dom.json'))},
-  {'photos': [{'photo': enc('data/rathaus_a.jpg'), 'crop': {'x':45,'y':22,'w':610,'h':403}},
-              {'photo': enc('data/rathaus_b.jpg'), 'crop': {'x':30,'y':5,'w':470,'h':312}},
-              {'photo': enc('data/rathaus_c.jpg'), 'crop': {'x':30,'y':10,'w':380,'h':252}}], 'scene': json.load(open('test/scene_rathaus.json'))},
+  {'photos': [{'photo': enc('data/sample_dom.jpg'), 'crop': {'x':205,'y':64,'w':335,'h':758}, 'role': 'front'}], 'scene': json.load(open('test/scene_dom.json'))},
+  {'photos': [{'photo': enc('data/rathaus_a.jpg'), 'crop': {'x':45,'y':22,'w':610,'h':403}, 'role': 'front'},
+              {'photo': enc('data/rathaus_b.jpg'), 'crop': {'x':30,'y':5,'w':470,'h':312}, 'role': 'angle', 'caption': 'gables and roof line'},
+              {'photo': enc('data/rathaus_c.jpg'), 'crop': {'x':30,'y':10,'w':380,'h':252}, 'role': 'angle', 'caption': 'arcade arches'}], 'scene': json.load(open('test/scene_rathaus.json'))},
 ]
 src = open('web/page.src.html').read()
 page = src.replace('/*CORE*/', core).replace('/*EXAMPLES*/[]', json.dumps(examples, ensure_ascii=False)).replace('/*REFS*/null', json.dumps(refs, separators=(',',':'), ensure_ascii=False))

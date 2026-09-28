@@ -63,6 +63,7 @@ textarea.code{font:11px/1.45 ui-monospace,Menlo,monospace;min-height:160px;white
 
 <div class="pane" id="adjust">
   <div class="row sb"><h2>Adjust</h2><button id="modReset" class="link">Reset</button></div>
+  <div class="slider"><label for="mDetail">Detail</label><span id="mDetailO"></span><input type="range" id="mDetail" min="1" max="3" step="1" value="3"></div>
   <div class="slider"><label for="mOpen">Opening size</label><span id="mOpenO"></span><input type="range" id="mOpen" min="0.5" max="1.6" step="0.05" value="1"></div>
   <div class="slider"><label for="mDensity">Window density</label><span id="mDensityO"></span><input type="range" id="mDensity" min="0.5" max="2" step="0.25" value="1"></div>
   <div class="slider"><label for="mSimplify">Simplify (smallest openings first)</label><span id="mSimplifyO"></span><input type="range" id="mSimplify" min="0" max="1" step="0.05" value="0"></div>
@@ -127,15 +128,15 @@ function draw(){ const res=S.a.res; if(!res){ $('sheet').innerHTML='<p class="hi
 const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 // engine A – Anthropic Messages API, direct from the plugin UI
-function scaled(sc){ const s2=Object.assign({},sc); if(S.height!=='auto'&&sc.height&&+S.height!==sc.height){ const f=+S.height/sc.height; const K=['x','y','w','h','cx','cy','rx','ry']; s2.shapes=sc.shapes.map(q=>{const o=Object.assign({},q);K.forEach(k=>{if(typeof o[k]==='number')o[k]=o[k]*f;}); if(o.points)o.points=o.points.map(p=>[p[0]*f,p[1]*f]); return o;}); s2.bands=(sc.bands||[]).map(b=>({from:Math.round(b.from*f),to:Math.round(b.to*f),shift:b.shift})); s2.width=Math.round(sc.width*f); s2.height=+S.height; } return s2; }
+function scaled(sc){ const s2=Object.assign({},sc); if(S.height!=='auto'&&sc.height&&+S.height!==sc.height){ const f=+S.height/sc.height; const K=['x','y','w','h','cx','cy','rx','ry']; s2.shapes=sc.shapes.map(q=>{const o=Object.assign({},q);K.forEach(k=>{if(typeof o[k]==='number')o[k]=o[k]*f;}); if(o.points)o.points=o.points.map(p=>[p[0]*f,p[1]*f]); return o;}); s2.bands=(sc.bands||[]).map(b=>Object.assign({},b,{from:Math.round(b.from*f),to:Math.round(b.to*f)})); s2.width=Math.round(sc.width*f); s2.height=+S.height; } return s2; }
 function update(){ if(!S.a.scene){ S.a.res=null; draw(); syncAdj(); return; } S.a.scaled=scaled(S.a.scene); S.a.res=D.fromScene(S.a.scaled,S.mods); draw(); syncAdj(); }
 function setScene(sc){ S.a.scene=sc; S.a.name=sc.landmark||'Signature Graphic'; S.mods=fresh(); $('json').value=JSON.stringify(sc,null,1); drawParts(); update(); }
-function drawParts(){ const hid=new Set(S.mods.hidden); $('parts').innerHTML=((S.a.scene&&S.a.scene.shapes)||[]).map((q,i)=>!q||!q.type?'':`<label class="part${hid.has(i)?' off':''}"><input type="checkbox" data-i="${i}" ${hid.has(i)?'':'checked'}><span>${esc(q.note||q.type)}</span><span class="pt">${(q.op||(q.type==='windows'?'cut':'add'))==='cut'?'opening':'mass'}</span></label>`).join(''); }
-function syncAdj(){ const m=S.mods, r=S.a.res; $('mOpen').value=m.openingSize; $('mOpenO').textContent=Math.round(m.openingSize*100)+'%'; $('mDensity').value=m.density; $('mDensityO').textContent=Math.round(m.density*100)+'%'; $('mSimplify').value=m.simplify; $('mSimplifyO').textContent=r&&r.openings?(r.openings.total-r.openings.kept)+' removed':'';
+function drawParts(){ const hid=new Set(S.mods.hidden); $('parts').innerHTML=((S.a.scene&&S.a.scene.shapes)||[]).map((q,i)=>!q||!q.type?'':`<label class="part${hid.has(i)?' off':''}"><input type="checkbox" data-i="${i}" ${hid.has(i)?'':'checked'}><span>${esc(q.note||q.type)}</span><span class="pt">${({cut:'opening',offset:'offset',pier:'pier'})[q.op||(q.type==='windows'?'cut':'add')]||'mass'} · L${D.levelOf(q)}</span></label>`).join(''); }
+function syncAdj(){ const m=S.mods, r=S.a.res; $('mDetail').value=m.detail; $('mDetailO').textContent=['','Essential','Standard','Rich'][m.detail]+(r&&r.detail&&r.detail.hidden?' · '+r.detail.hidden+' hidden':''); $('mOpen').value=m.openingSize; $('mOpenO').textContent=Math.round(m.openingSize*100)+'%'; $('mDensity').value=m.density; $('mDensityO').textContent=Math.round(m.density*100)+'%'; $('mSimplify').value=m.simplify; $('mSimplifyO').textContent=r&&r.openings?(r.openings.total-r.openings.kept)+' removed':'';
   $('rowCount').textContent=r?r.bands.length+' rows':'–'; $('mOffset').checked=m.rowOffset; $('mPlinth').checked=m.plinth;
   [...$('gapSeg').children].forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.g===(m.rowGap>=4?4:1)))); [...$('mirSeg').children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.m===m.mirror)));
   $('adjust').querySelectorAll('input,button').forEach(el=>{ if(el.id!=='rowCount') el.disabled=!S.a.scene; }); if(r) $('rowMinus').disabled=r.bands.length<=1; }
-[['mOpen','openingSize'],['mDensity','density'],['mSimplify','simplify']].forEach(([id,k])=>$(id).oninput=e=>{S.mods[k]=+e.target.value;update();});
+[['mDetail','detail'],['mOpen','openingSize'],['mDensity','density'],['mSimplify','simplify']].forEach(([id,k])=>$(id).oninput=e=>{S.mods[k]=+e.target.value;update();});
 $('rowMinus').onclick=()=>{S.mods.rowDelta--;update();};
 $('rowPlus').onclick=()=>{const n=S.a.res&&S.a.res.bands.length;S.mods.rowDelta++;update();if(S.a.res&&S.a.res.bands.length===n){S.mods.rowDelta--;update();}};
 $('mOffset').onchange=e=>{S.mods.rowOffset=e.target.checked;update();}; $('mPlinth').onchange=e=>{S.mods.plinth=e.target.checked;update();};

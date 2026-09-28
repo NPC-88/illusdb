@@ -93,6 +93,23 @@ function readBody(req, limit) {
   });
 }
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+// measured features of the main view: numbers only, so the endpoint cannot carry free text into the prompt
+function cleanFeatures(f) {
+  if (!f || typeof f !== 'object') return null;
+  const n = (v) => (Number.isFinite(+v) ? Math.round(+v * 10) / 10 : 0), arr = (a, max) => (Array.isArray(a) ? a.slice(0, max) : []), o = (v) => (v && typeof v === 'object' ? v : {});
+  return {
+    widthDp: n(f.widthDp), heightDp: n(f.heightDp), profile: arr(f.profile, 200).map(n), lines: arr(f.lines, 20).map(n),
+    peaks: arr(f.peaks, 5).map(o).map((p) => ({ x: n(p.x), width: n(p.width), top: n(p.top) })),
+    rows: arr(f.rows, 8).map(o).map((r) => ({ count: n(r.count), y: n(r.y), w: n(r.w), h: n(r.h), xFrom: n(r.xFrom), xTo: n(r.xTo), pitch: n(r.pitch) })),
+    singles: arr(f.singles, 12).map(o).map((q) => ({ w: n(q.w), h: n(q.h), x: n(q.x), y: n(q.y) }))
+  };
+}
+function cleanPhotos(list, count) {
+  return (Array.isArray(list) ? list : []).slice(0, count).map((q) => ({
+    role: q && core.PHOTO_ROLES[q.role] ? q.role : 'angle',
+    caption: q && typeof q.caption === 'string' ? q.caption.replace(/[\u0000-\u001f]+/g, ' ').slice(0, 120) : ''
+  }));
+}
 function tolerantJSON(text) {
   const t = String(text || '').trim();
   try { return JSON.parse(t); } catch (e) { /* fall through */ }
@@ -119,14 +136,15 @@ async function draft(req, res) {
   let previous = null;
   if (body.previous && typeof body.previous === 'object') { const s = JSON.stringify(body.previous); if (s.length < 40000) previous = body.previous; }
   const height = [90, 120, 150, 180].includes(+body.height) ? +body.height : null;
+  const photos = cleanPhotos(body.photos, images.length);
   const prompt = core.buildPrompt({
-    height, landmark: str(body.landmark, 200), notes: str(body.notes, 1500), sketch: sk,
-    hasPhoto: images.length > 0, photoCount: Math.max(1, images.length), previous, feedback: str(body.feedback, 1500)
+    height, landmark: str(body.landmark, 200), notes: str(body.notes, 1500), sketch: sk, features: cleanFeatures(body.features),
+    hasPhoto: images.length > 0, photoCount: Math.max(1, images.length), photos, previous, feedback: str(body.feedback, 1500)
   });
   const model = body.tier === 'complex' ? CFG.modelComplex : CFG.model;
   const content = [];
   images.forEach((data, i) => {
-    if (images.length > 1) content.push({ type: 'text', text: i === 0 ? 'Photo 1 (main view):' : `Photo ${i + 1}:` });
+    if (images.length > 1) content.push({ type: 'text', text: `Photo ${i + 1} (${i === 0 ? 'main view, ' : ''}${core.PHOTO_ROLES[(photos[i] || {}).role] || 'another angle'}):` });
     content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } });
   });
   content.push({ type: 'text', text: prompt });
