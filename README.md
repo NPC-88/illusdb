@@ -11,15 +11,28 @@ The DB style isn't free illustration. Every graphic is made of **vertical 2 dp b
 
 Claude (vision) makes the plan: a JSON list of shapes in dp plus the row breaks. The renderer draws it and the validator checks every bar. The export is SVG, where 1 unit = 1 dp = 1 px in Figma.
 
+### Photo tools
+
+- **Crop:** drag across the photo to crop it to the landmark.
+- **Outline:** click around the landmark to trace a polygon. To close it, click the first point, double-click, or press Enter. Everything outside the outline counts as sky, so trees, cars and neighbouring buildings drop out of the silhouette. You can draw several outlines for separate parts. Sky picks inside an outline still cut out sky seen through arches. Backspace removes the last point and Esc drops an open outline.
+- **Sky / Building:** click to teach the colour model what sky and building look like.
+- **Undo / Redo** (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z or Ctrl+Y) steps back through every photo edit: crop, outline points, picks, and the silhouette sliders (one step per drag). Each photo keeps its own edits, and undo switches to the photo it changes.
+- **Expand** (the button on the photo, or E) opens a full-screen editor with the same tools, the thumbnails and the silhouette. Zoom with + / −, Ctrl/⌘ + scroll or the zoom buttons (up to 4× the photo's own pixels); scroll or hold Space and drag to pan; 0 fits the photo. C, O, S and B switch tools. Outline points can be dragged to adjust them.
+
+### Several photos
+
+Up to 4 photos per landmark. Photo 1 (or the one set with **Use as main view**) sets the proportions; the silhouette and the measured openings come from it. For each photo, pick what it shows (front, side, back, other angle, detail close-up, aerial) and add a short caption, e.g. "rose window" or "count the arcade arches". Claude gets every photo labelled with its role and caption, cross-checks them (a feature seen in two photos is architecture, one seen once may be clutter), draws the elevation of the main view and uses close-ups for the fine detail. Its reading of the photos appears under **Read from the photos** next to the draft.
+
 ### Adjustments (no new Claude call)
 
 These reshape the plan before the renderer runs, and they never loosen the construction rules:
 
-- **Openings & detail:** opening size (50–160 %), window density (50–200 %), and a simplify slider that removes the smallest openings first.
+- **Detail:** Essential, Standard or Rich. Claude tags every part and row of the plan with a level (1 essential silhouette and masses, 2 standard openings and frames, 3 rich tracery, lancets, spire breaks and extra rows); the slider shows the parts up to that level and merges finer rows into the row below. The parts list shows each part's level.
+- **Openings:** opening size (50–160 %), window density (50–200 %), and a simplify slider that removes the smallest openings first.
 - **Rows:** fewer or more rows (merge the thinnest / split the tallest), row offset on/off, a 1 dp or 4 dp gap between rows, and an optional plinth row.
 - **Parts & symmetry:** switch off any part Claude drew (hover to highlight it in the web tool), and mirror the left or right half.
 
-**Revise with Claude** sends the plan *as adjusted* (`bakeScene()`), so Claude builds on what the designer tuned. **Write adjustments into plan** does the same locally, without asking Claude.
+**Revise with Claude** sends the plan *as adjusted* (`bakeScene()`), so Claude builds on what the designer tuned.
 
 The no-AI trace engine is still in the core as `trace()` but is no longer shown in the UI.
 
@@ -27,13 +40,15 @@ The no-AI trace engine is still in the core as `trace()` but is no longer shown 
 
 ```
 core/dbsig-core.js     shared engine: rules, renderer, validator, adjustments (fromScene mods, bakeScene), AI prompt, SVG export, trace()
+web/photos.js          shared photo panel (photos, tools, undo/redo, zoom editor, silhouette), used by the web tool and the plugin
 web/page.src.html      page source → build.py → web/signature-graphics-drafter.html (claude.ai artifact)
                                             and server/public/index.html (team server)
 server/server.js       team server: password login + Anthropic API proxy (company key)
 render.yaml            one-click Render deployment
 figma/                 Figma plugin: manifest.json, code.js, ui.src.html → build.py → ui.html
 data/examples_dp.json  the 21 DB reference landmarks, pulled from the backlight PDFs as exact dp bars
-test/                  node test harness (validator + trace previews), Playwright UI checks
+test/                  node test harness (validator + trace previews + detail levels), Playwright UI checks
+                       (outline_test.js: outline + undo/redo, editor_test.js: expanded editor, figma_ui_test.js: plugin UI)
 build.py               inlines the core (and sample data) into the web page and the plugin UI
 ```
 
@@ -78,6 +93,7 @@ It listens on `PORT` (default 3000). Put it behind HTTPS.
 | `SESSION_SECRET` | random at start | signs login cookies; set it so sign-ins survive restarts |
 | `MODEL` | `claude-sonnet-5` | "Balanced" model |
 | `MODEL_COMPLEX` | `claude-opus-5-5` | "Most capable" model |
+| `MAX_TOKENS` | 32000 | output cap per draft, Claude's thinking included (answers are streamed) |
 | `DRAFTS_PER_HOUR` | 30 | per person (IP) |
 | `DRAFTS_PER_DAY` | 300 | whole team |
 
@@ -87,15 +103,24 @@ To change the password, update `TEAM_PASSWORD` in Render and redeploy. Existing 
 
 1. In Figma desktop, go to Plugins → Development → Import plugin from manifest… and pick `figma/manifest.json`.
 2. Open it and add an Anthropic API key under Claude API settings. The key is stored only in Figma's client storage on that machine. The model field defaults to `claude-sonnet-5`; change it to any model your key can use.
-3. Select an image layer and press Use selected image, or upload a photo. Crop, draft, fine-tune under Adjust, then Place on canvas.
+3. Select one or more image layers and press **Use selected images** (up to 4), or upload photos. Crop, outline, pick sky and building, set each photo's role and caption, draft, fine-tune under Adjust, then **Place on canvas**.
+
+The plugin has the web tool's photo panel: several photos with roles and captions, Crop / Outline / Sky / Building with Undo/Redo, the expanded zoom editor, the silhouette preview with its sliders, "Read from the photos" and hover highlighting of parts. It is the same code: `build.py` copies the web tool's photo panel markup, its stylesheet and `web/photos.js` into `figma/ui.html`. The plugin also keeps the JSON plan editor.
 
 ## Plan format
 
 The coordinates are in dp, with the origin at the bottom left and y pointing up. Shapes are applied in order: `add` fills an area and `cut` removes one.
 
-Shape types: `rect`, `poly`, `gable`, `spire`, `dome`, `ellipse`, `arch`, and `windows` (a grid of openings).
+Shape types: `rect`, `poly`, `gable`, `spire`, `dome`, `ellipse`, `arch`, `pointed` (Gothic arch), and `windows` (a grid of openings, with `top` flat, round or pointed).
 
-Bands are written as `{from, to, shift}`, with `shift` set to 0 or 2. The prompt is in `buildPrompt()`. Designers can also edit the JSON directly in both front ends.
+Two more ops shape the bar pattern instead of the area:
+
+- `offset`: bars inside switch to the other 2 dp phase of their row. Designers use this for framed elements such as tracery panels in a tower or the nave front between towers.
+- `pier` (with `shift` 0 or 2, on a 2 dp wide rect): that bar runs straight through the row gaps, like tower corners and buttresses. Neighbouring row bars are trimmed so every rule still holds.
+
+Every shape and band can carry `level` 1–3 (see Detail above). Untagged masses count as level 1, untagged openings as level 2.
+
+Bands are written as `{from, to, shift, level}`, with `shift` set to 0 or 2. The prompt is in `buildPrompt()`. It includes `WORKED_EXAMPLE`, the designer-made St. Petri Dom (Bremen) graphic rebuilt as a plan (86 × 180 dp, 9 rows at Rich). At Rich the plan matches the designer's bars on 172 of 180 dp rows, so Claude sees the density and the techniques DB designers use. The same plan is the St. Petri Dom example in the tool. In the Figma plugin designers can also edit the JSON directly.
 
 ## What the reference set taught us
 
@@ -109,5 +134,3 @@ Bands are written as `{from, to, shift}`, with `shift` set to 0 or 2. The prompt
 - Give Claude the trace mask as extra context (hybrid).
 - Add a skyline composer that combines 3 landmarks at the same scale on a shared baseline.
 - Before rollout, confirm the grey tones and Cold Black hex with the DB colour spec.
-   ## Workflow Test
-   Polygon selection and undo/redo are now live.

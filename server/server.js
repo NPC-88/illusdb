@@ -11,6 +11,7 @@
 //   MODEL_COMPLEX      "Most capable" model      (default: claude-opus-5-5)
 //   DRAFTS_PER_HOUR    per person/IP limit       (default: 30)
 //   DRAFTS_PER_DAY     whole-team daily limit    (default: 300)
+//   MAX_TOKENS         output cap per draft, thinking included (default: 32000)
 //   PORT               (default: 3000)
 'use strict';
 const http = require('http');
@@ -29,7 +30,8 @@ const CFG = {
   perHour: +(process.env.DRAFTS_PER_HOUR || 30),
   perDay: +(process.env.DRAFTS_PER_DAY || 300),
   port: +(process.env.PORT || 3000),
-  apiBase: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com'
+  apiBase: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
+  maxTokens: +(process.env.MAX_TOKENS || 32000)
 };
 if (!CFG.key) console.warn('[warn] ANTHROPIC_API_KEY is not set – drafting will fail');
 if (!CFG.password) console.warn('[warn] TEAM_PASSWORD is not set – nobody can sign in');
@@ -93,6 +95,23 @@ function readBody(req, limit) {
   });
 }
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+// measured features of the main view: numbers only, so the endpoint cannot carry free text into the prompt
+function cleanFeatures(f) {
+  if (!f || typeof f !== 'object') return null;
+  const n = (v) => (Number.isFinite(+v) ? Math.round(+v * 10) / 10 : 0), arr = (a, max) => (Array.isArray(a) ? a.slice(0, max) : []), o = (v) => (v && typeof v === 'object' ? v : {});
+  return {
+    widthDp: n(f.widthDp), heightDp: n(f.heightDp), profile: arr(f.profile, 200).map(n), lines: arr(f.lines, 20).map(n),
+    peaks: arr(f.peaks, 5).map(o).map((p) => ({ x: n(p.x), width: n(p.width), top: n(p.top) })),
+    rows: arr(f.rows, 8).map(o).map((r) => ({ count: n(r.count), y: n(r.y), w: n(r.w), h: n(r.h), xFrom: n(r.xFrom), xTo: n(r.xTo), pitch: n(r.pitch) })),
+    singles: arr(f.singles, 12).map(o).map((q) => ({ w: n(q.w), h: n(q.h), x: n(q.x), y: n(q.y) }))
+  };
+}
+function cleanPhotos(list, count) {
+  return (Array.isArray(list) ? list : []).slice(0, count).map((q) => ({
+    role: q && core.PHOTO_ROLES[q.role] ? q.role : 'angle',
+    caption: q && typeof q.caption === 'string' ? q.caption.replace(/[\u0000-\u001f]+/g, ' ').slice(0, 120) : ''
+  }));
+}
 function tolerantJSON(text) {
   const t = String(text || '').trim();
   try { return JSON.parse(t); } catch (e) { /* fall through */ }
@@ -100,6 +119,40 @@ function tolerantJSON(text) {
   const a = t.indexOf('{'), b = t.lastIndexOf('}');
   if (a >= 0 && b > a) return JSON.parse(t.slice(a, b + 1));
   throw new Error('no JSON in reply');
+}
+
+
+// POST /v1/messages with stream: true; collects the text blocks, stop_reason and usage from the SSE events
+async function callClaude(body) {
+  const r = await fetch(CFG.apiBase + '/v1/messages', {
+    method: 'POST',
+    headers: Object.assign({ 'content-type': 'application/json', 'x-api-key': CFG.key, 'anthropic-version': '2023-06-01' }, CFG.workspace ? { 'anthropic-workspace-id': CFG.workspace } : {}),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(600000)
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw Object.assign(new Error((e.error && e.error.message) || 'HTTP ' + r.status), { status: r.status });
+  }
+  const out = { text: '', stop_reason: null, stop_details: null, usage: {} }, blocks = {};
+  const dec = new TextDecoder(); let buf = '';
+  const handle = (ev) => {
+    if (ev.type === 'message_start') Object.assign(out.usage, (ev.message && ev.message.usage) || {});
+    else if (ev.type === 'content_block_start') blocks[ev.index] = ev.content_block && ev.content_block.type;
+    else if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta' && blocks[ev.index] === 'text') out.text += ev.delta.text;
+    else if (ev.type === 'message_delta') { if (ev.delta) { out.stop_reason = ev.delta.stop_reason || out.stop_reason; out.stop_details = ev.delta.stop_details || out.stop_details; } Object.assign(out.usage, ev.usage || {}); }
+    else if (ev.type === 'error') throw Object.assign(new Error((ev.error && ev.error.message) || 'stream error'), { status: ev.error && ev.error.type === 'overloaded_error' ? 529 : 502 });
+  };
+  for await (const chunk of r.body) {
+    buf += dec.decode(chunk, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const raw = buf.slice(0, i); buf = buf.slice(i + 2);
+      const data = raw.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('');
+      if (data) handle(JSON.parse(data));
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- draft
@@ -119,42 +172,46 @@ async function draft(req, res) {
   let previous = null;
   if (body.previous && typeof body.previous === 'object') { const s = JSON.stringify(body.previous); if (s.length < 40000) previous = body.previous; }
   const height = [90, 120, 150, 180].includes(+body.height) ? +body.height : null;
+  const photos = cleanPhotos(body.photos, images.length);
   const prompt = core.buildPrompt({
-    height, landmark: str(body.landmark, 200), notes: str(body.notes, 1500), sketch: sk,
-    hasPhoto: images.length > 0, photoCount: Math.max(1, images.length), previous, feedback: str(body.feedback, 1500)
+    height, landmark: str(body.landmark, 200), notes: str(body.notes, 1500), sketch: sk, features: cleanFeatures(body.features),
+    hasPhoto: images.length > 0, photoCount: Math.max(1, images.length), photos, previous, feedback: str(body.feedback, 1500)
   });
   const model = body.tier === 'complex' ? CFG.modelComplex : CFG.model;
   const content = [];
   images.forEach((data, i) => {
-    if (images.length > 1) content.push({ type: 'text', text: i === 0 ? 'Photo 1 (main view):' : `Photo ${i + 1}:` });
+    if (images.length > 1) content.push({ type: 'text', text: `Photo ${i + 1} (${i === 0 ? 'main view, ' : ''}${core.PHOTO_ROLES[(photos[i] || {}).role] || 'another angle'}):` });
     content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } });
   });
   content.push({ type: 'text', text: prompt });
 
   const t0 = Date.now();
-  let r, j;
-  try {
-    r = await fetch(CFG.apiBase + '/v1/messages', {
-      method: 'POST',
-      headers: Object.assign({ 'content-type': 'application/json', 'x-api-key': CFG.key, 'anthropic-version': '2023-06-01' }, CFG.workspace ? { 'anthropic-workspace-id': CFG.workspace } : {}),
-      body: JSON.stringify({ model, max_tokens: 8000, messages: [{ role: 'user', content }] }),
-      signal: AbortSignal.timeout(180000)
-    });
-    j = await r.json();
-  } catch (e) {
+  // Streamed: both models think before answering and thinking counts toward max_tokens, so rich plans need
+  // room; streaming keeps a long answer from hitting HTTP timeouts.
+  let j;
+  try { j = await callClaude({ model, max_tokens: CFG.maxTokens, stream: true, messages: [{ role: 'user', content }] }); }
+  catch (e) {
+    if (e.status) {
+      console.error('[draft] anthropic error', e.status, e.message);
+      return send(res, e.status === 429 ? 429 : 502, { error: e.status === 429 ? 'rate_limited' : 'upstream_error', message: e.status === 429 ? 'Claude is busy right now. Try again in a minute.' : 'Claude returned an error: ' + e.message });
+    }
     console.error('[draft] upstream failure', e.message);
     return send(res, 502, { error: 'upstream_error', message: 'Could not reach Claude. Try again in a moment.' });
   }
-  if (!r.ok) {
-    const msg = (j && j.error && j.error.message) || ('HTTP ' + r.status);
-    console.error('[draft] anthropic error', r.status, msg);
-    const status = r.status === 429 ? 429 : 502;
-    return send(res, status, { error: r.status === 429 ? 'rate_limited' : 'upstream_error', message: r.status === 429 ? 'Claude is busy right now. Try again in a minute.' : 'Claude returned an error: ' + msg });
+  const text = j.text;
+  if (j.stop_reason === 'refusal') {
+    console.error('[draft] refusal', JSON.stringify(j.stop_details || null));
+    return send(res, 502, { error: 'refused', message: 'Claude declined this request. Try a different photo or crop.' });
   }
-  const text = (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
   let scene;
   try { scene = tolerantJSON(text); if (!scene || !Array.isArray(scene.shapes) || !scene.shapes.length) throw new Error('no shapes'); }
-  catch (e) { return send(res, 502, { error: 'invalid_json', message: 'Claude’s answer was not a valid plan. Press Draft again.' }); }
+  catch (e) {
+    console.error(`[draft] invalid plan: stop=${j.stop_reason} out=${(j.usage || {}).output_tokens || 0} chars=${text.length} (${e.message}) start=${JSON.stringify(text.slice(0, 160))} end=${JSON.stringify(text.slice(-160))}`);
+    const cut = j.stop_reason === 'max_tokens';
+    return send(res, 502, { error: 'invalid_json', message: cut
+      ? 'Claude’s plan was too long and got cut off. Press Draft again, or add a note such as “keep it simpler”.'
+      : 'Claude’s answer was not a valid plan. Press Draft again.' });
+  }
   const u = j.usage || {};
   console.log(`[draft] ${new Date().toISOString()} user=${ipTag(ip)} model=${model} photos=${images.length} in=${u.input_tokens || 0} out=${u.output_tokens || 0} ms=${Date.now() - t0}${previous ? ' revise' : ''}`);
   send(res, 200, { scene, model, usage: { input: u.input_tokens || 0, output: u.output_tokens || 0 } });

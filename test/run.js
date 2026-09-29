@@ -34,6 +34,15 @@ for (const [k, g] of Object.entries(ex)) {
 const r = C.fromScene(C.EXAMPLE_SCENE);
 console.log('--- example scene', r.W, r.H, r.bars.length, JSON.stringify(C.validate(r).issues.map((i) => i.rule)));
 barsToPNG(r, path.join(out, 'scene_example.png'));
+// detail levels: the worked example must pass every rule at each level and lose parts as the level drops
+let prevBars = 0;
+for (const d of [1, 2, 3]) {
+  const w = C.fromScene(C.WORKED_EXAMPLE, { detail: d }), v = C.validate(w);
+  console.log(`--- worked example, detail ${d}: ${w.bars.length} bars, ${w.bands.length} rows, ${v.errors} errors, ${v.warns} warnings`);
+  if (v.issues.length || w.bars.length <= prevBars) { console.error('detail level check failed'); process.exitCode = 1; }
+  prevBars = w.bars.length;
+  barsToPNG(w, path.join(out, `worked_detail_${d}.png`));
+}
 fs.writeFileSync(path.join(out, 'scene_example.svg'), C.toSVG(r));
 
 // 3. trace on photos given on the command line

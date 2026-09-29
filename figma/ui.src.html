@@ -1,188 +1,273 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
+<!-- build.py copies the web tool's stylesheet, photo panel and editor dialog into the /*…*/ slots below,
+     and the shared photo code (web/photos.js) into /*PHOTOS*/, so the plugin and the web tool behave the same. -->
 <style>
-:root{--bg:var(--figma-color-bg,#fff);--bg2:var(--figma-color-bg-secondary,#f5f5f5);--tx:var(--figma-color-text,#1e1e1e);--tx2:var(--figma-color-text-secondary,#6b6b6b);--bd:var(--figma-color-border,#e6e6e6);--brand:var(--figma-color-bg-brand,#0d99ff);--brand-tx:var(--figma-color-text-onbrand,#fff);--danger:var(--figma-color-text-danger,#dc3412);--ok:var(--figma-color-text-success,#14ae5c);--warn:var(--figma-color-text-warning,#b86200);--measure:#0090D1}
-*{box-sizing:border-box}[hidden]{display:none!important}
-body{margin:0;font:12px/1.4 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--tx);background:var(--bg)}
-.pane{padding:12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--bd)}
-h2{font-size:11px;font-weight:600;margin:0;text-transform:uppercase;letter-spacing:.06em;color:var(--tx2)}
-.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.row.sb{justify-content:space-between}
-button,.btn{font:inherit;font-weight:500;border:1px solid var(--bd);background:var(--bg);color:var(--tx);border-radius:5px;padding:6px 10px;cursor:pointer}
-button.primary{background:var(--brand);color:var(--brand-tx);border-color:var(--brand)}
-button:disabled{opacity:.45;cursor:default}
-input[type=text],input[type=password],select,textarea{font:inherit;color:var(--tx);background:var(--bg2);border:1px solid var(--bd);border-radius:5px;padding:6px 8px;width:100%}
-textarea{min-height:44px;resize:vertical}
-.seg{display:inline-flex;border:1px solid var(--bd);border-radius:5px;overflow:hidden}.seg button{border:0;border-radius:0;padding:5px 8px}.seg button+button{border-left:1px solid var(--bd)}.seg button[aria-pressed=true]{background:var(--tx);color:var(--bg)}
-.drop{border:1px dashed var(--bd);border-radius:6px;background:var(--bg2);overflow:hidden;touch-action:none}
-.drop canvas{display:block;width:100%;height:auto;max-height:260px;object-fit:contain;cursor:crosshair}
-.empty{padding:22px 10px;text-align:center;color:var(--tx2)}
-.sheet{border:1px solid var(--bd);border-radius:6px;background:#fff;display:flex;justify-content:center;align-items:flex-end;padding:10px;min-height:200px}
-.sheet svg{max-width:100%;height:auto;max-height:340px}
-.pills{display:flex;gap:4px;flex-wrap:wrap;font:11px ui-monospace,Menlo,monospace}
-.pill{border:1px solid var(--bd);border-radius:99px;padding:1px 7px;color:var(--tx2)}.pill.ok{color:var(--ok)}.pill.err{color:var(--danger)}.pill.warn{color:var(--warn)}
-.sw{width:22px;height:22px;border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 0 1px var(--bd);padding:0}.sw[aria-pressed=true]{box-shadow:0 0 0 2px var(--tx)}
-.hint{color:var(--tx2);font-size:11px;margin:0}.err{color:var(--danger)}
-.slider{display:grid;grid-template-columns:1fr auto;gap:0 8px}.slider input{grid-column:1/-1;width:100%}
-.notes{font-size:11px;color:var(--tx2)}.notes b{color:var(--tx)}
-details summary{cursor:pointer;font-weight:500}
-button.link{border:0;background:none;padding:0;color:var(--brand)}
-.parts{display:flex;flex-direction:column;gap:1px;max-height:220px;overflow:auto}
-.part{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;padding:3px 4px;border-radius:4px}
-.part:hover{background:var(--bg2)}
-.part.off span:first-of-type{text-decoration:line-through;color:var(--tx2)}
-.part .pt{font:10px ui-monospace,Menlo,monospace;color:var(--tx2)}
-textarea.code{font:11px/1.45 ui-monospace,Menlo,monospace;min-height:160px;white-space:pre}
+/*WEB_STYLE*/
+</style>
+<style>
+/* the web tool's palette mapped onto Figma's theme colours */
+:root,:root:not([data-theme="light"]),:root[data-theme="dark"]{
+  --paper:var(--figma-color-bg-secondary,#f5f5f5); --panel:var(--figma-color-bg,#fff); --ink:var(--figma-color-text,#1e1e1e); --ink-2:var(--figma-color-text-secondary,#6b6b6b); --ink-3:var(--figma-color-text-tertiary,#9a9a9a);
+  --line:var(--figma-color-border,#e6e6e6); --line-2:var(--figma-color-border-strong,#cfcfcf); --measure:var(--figma-color-text-brand,#0d99ff); --measure-soft:var(--figma-color-bg-brand-tertiary,rgba(13,153,255,.1));
+  --ok:var(--figma-color-text-success,#14ae5c); --warn:var(--figma-color-text-warning,#b86200); --err:var(--figma-color-text-danger,#dc3412); --focus:var(--figma-color-border-brand-strong,#0d99ff);
+  --btn:var(--figma-color-bg-brand,#0d99ff); --btn-ink:var(--figma-color-text-onbrand,#fff); --sheet:#fff; --sheet-dark:#090F1B;
+  --f-display:Inter,system-ui,sans-serif; --f-body:Inter,system-ui,-apple-system,"Segoe UI",sans-serif; --f-mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+body{font-size:12px;padding:0 0 24px}
+h2{font-family:var(--f-body);font-size:13px;font-weight:600}
+.pane{padding:12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.pane > .card{border:0;padding:0;background:none}
+.sheet{min-height:200px;padding:10px}
+.sheet svg{max-height:360px}
+button,.btn{font-size:12px;padding:6px 10px}
+.seg button{padding:5px 8px}
+#editor{width:calc(100vw - 16px);height:calc(100vh - 16px)}
+.ed-body{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}
+.ed-side{border-left:0;border-top:1px solid var(--line);max-height:38vh}
+.notes{grid-template-columns:1fr}
+textarea.code{min-height:160px}
 </style></head><body>
 
 <div class="pane">
-  <div class="row sb"><h2>Reference photo</h2><div class="row"><button id="fromSel" type="button">Use selected image</button><label class="btn" for="file">Upload…</label><input id="file" type="file" accept="image/*" hidden></div></div>
-  <div class="drop" id="drop"><canvas id="photo" hidden></canvas><div class="empty" id="empty">Select an image layer in Figma, upload, or drop a photo here.</div></div>
-  <p class="hint">Drag on the photo to crop to the landmark.</p>
+  <div class="row between"><h2>Reference photos</h2><div class="row"><button id="fromSel" type="button" title="Adds every selected image layer (up to 4)">Use selected images</button><button id="newLandmark" class="linkbtn" type="button">New landmark</button></div></div>
+  /*PHOTO_PANEL*/
 </div>
 
 <div class="pane">
-  <div class="row sb">
+  <div class="row between">
     <h2>Claude plan</h2>
-    <div class="seg" id="sizeSeg"><button data-h="auto" aria-pressed="true">Plan</button><button data-h="90" aria-pressed="false">90</button><button data-h="120" aria-pressed="false">120</button><button data-h="150" aria-pressed="false">150</button><button data-h="180" aria-pressed="false">180</button></div>
+    <div class="seg" id="sizeSeg" role="group" aria-label="Height"><button type="button" data-h="auto" aria-pressed="true">Plan</button><button type="button" data-h="90" aria-pressed="false">90</button><button type="button" data-h="120" aria-pressed="false">120</button><button type="button" data-h="150" aria-pressed="false">150</button><button type="button" data-h="180" aria-pressed="false">180</button></div>
   </div>
-  <div class="row" id="swatches"></div>
-  <input type="text" id="landmark" placeholder="Landmark name & city, e.g. St. Petri Dom, Bremen">
-  <textarea id="notes" placeholder="Notes for Claude, e.g. keep the two spires, drop the clock"></textarea>
-  <div class="row"><button class="primary" id="aRun">Draft with Claude</button><button id="aStop" hidden>Stop</button><span id="aBusy" class="hint" hidden>Claude is planning…</span></div>
-  <div class="row" style="flex-wrap:nowrap"><input type="text" id="aFeedback" placeholder="Revise: e.g. spires taller"><button id="aRevise">Revise</button></div>
-  <p id="msg" class="hint" hidden></p>
+  <div class="swatches" id="swatches"></div>
+  <input type="text" id="landmark" placeholder="Landmark name & city, e.g. St. Petri Dom, Bremen" aria-label="Landmark name and city">
+  <textarea id="notes" placeholder="Notes for Claude, e.g. keep the two spires, drop the clock" aria-label="Notes for Claude"></textarea>
+  <div class="row"><button class="primary" id="aRun" type="button">Draft with Claude</button><button id="aStop" type="button" hidden>Stop</button><span id="aBusy" class="row mono" hidden><span class="spin"></span><span id="aBusyText">Claude is planning…</span></span></div>
+  <div class="row" style="flex-wrap:nowrap"><input type="text" id="aFeedback" placeholder="Revise: e.g. spires taller" aria-label="Revision for Claude"><button id="aRevise" type="button">Revise</button></div>
+  <div id="aMsg" class="msg" hidden></div>
 </div>
 
 <div class="pane">
-  <div class="sheet" id="sheet"><p class="hint" style="align-self:center">No draft yet</p></div>
-  <div class="pills" id="pills"></div>
-  <div class="notes" id="notesOut"></div>
-  <div class="row"><button class="primary" id="place">Place on canvas</button><label class="row"><input type="checkbox" id="safe" checked> 3 dp safe area</label></div>
-  <details><summary>Construction plan (JSON)</summary><textarea id="json" class="code" spellcheck="false"></textarea><button id="apply" style="margin-top:6px">Apply</button></details>
+  <div class="sheet" id="aSheet"></div>
+  <div class="status" id="aStatus"></div>
+  <div class="row"><button class="primary" id="place" type="button">Place on canvas</button><label class="row" style="font-weight:500;gap:6px"><input type="checkbox" id="safe" checked> 3 dp safe area</label><label class="row" style="font-weight:500;gap:6px"><input type="checkbox" id="showBands" checked> Show rows</label></div>
+  <div class="notes" id="aNotes"></div>
+  <details><summary>Construction plan (JSON)</summary><textarea id="json" class="code" spellcheck="false"></textarea><button id="apply" type="button" style="margin-top:6px">Apply</button></details>
 </div>
 
-<div class="pane" id="adjust">
-  <div class="row sb"><h2>Adjust</h2><button id="modReset" class="link">Reset</button></div>
-  <div class="slider"><label for="mOpen">Opening size</label><span id="mOpenO"></span><input type="range" id="mOpen" min="0.5" max="1.6" step="0.05" value="1"></div>
-  <div class="slider"><label for="mDensity">Window density</label><span id="mDensityO"></span><input type="range" id="mDensity" min="0.5" max="2" step="0.25" value="1"></div>
-  <div class="slider"><label for="mSimplify">Simplify (smallest openings first)</label><span id="mSimplifyO"></span><input type="range" id="mSimplify" min="0" max="1" step="0.05" value="0"></div>
-  <div class="row sb"><span>Rows</span><div class="seg"><button id="rowMinus">−</button><button id="rowCount" disabled>–</button><button id="rowPlus">+</button></div></div>
-  <div class="row sb"><label><input type="checkbox" id="mOffset" checked> Row offset 2 dp</label><label><input type="checkbox" id="mPlinth"> Plinth row</label></div>
-  <div class="row sb"><span>Row gap</span><div class="seg" id="gapSeg"><button data-g="1" aria-pressed="true">1 dp</button><button data-g="4" aria-pressed="false">4 dp</button></div></div>
-  <div class="row sb"><span>Mirror</span><div class="seg" id="mirSeg"><button data-m="off" aria-pressed="true">Off</button><button data-m="left" aria-pressed="false">Left half</button><button data-m="right" aria-pressed="false">Right half</button></div></div>
-  <div class="row sb"><span class="hint">Parts: untick to remove</span><button id="partsAll" class="link">Show all</button></div>
-  <div id="parts" class="parts"></div>
+<div class="pane a-adj" id="adjust">
+  <div class="row between"><h2>Adjust</h2><button id="modReset" class="linkbtn" type="button">Reset</button></div>
+  <div class="slider"><label for="mDetail">Detail</label><output id="mDetailO"></output><input type="range" id="mDetail" min="1" max="3" step="1" value="3"></div>
+  <div class="slider"><label for="mOpen">Opening size</label><output id="mOpenO"></output><input type="range" id="mOpen" min="0.5" max="1.6" step="0.05" value="1"></div>
+  <div class="slider"><label for="mDensity">Window density</label><output id="mDensityO"></output><input type="range" id="mDensity" min="0.5" max="2" step="0.25" value="1"></div>
+  <div class="slider"><label for="mSimplify">Simplify (smallest openings first)</label><output id="mSimplifyO"></output><input type="range" id="mSimplify" min="0" max="1" step="0.05" value="0"></div>
+  <div class="ctl"><span>Rows</span><div class="stepper"><button id="rowMinus" type="button" aria-label="Fewer rows">−</button><output id="rowCount">–</output><button id="rowPlus" type="button" aria-label="More rows">+</button></div></div>
+  <div class="ctl"><label for="mOffset">Row offset 2 dp</label><input type="checkbox" class="switch" id="mOffset" checked></div>
+  <div class="ctl"><span>Gap between rows</span><div class="seg" id="gapSeg" role="group" aria-label="Gap between rows"><button type="button" data-g="1" aria-pressed="true">1 dp</button><button type="button" data-g="4" aria-pressed="false">4 dp</button></div></div>
+  <div class="ctl"><label for="mPlinth">Plinth row</label><input type="checkbox" class="switch" id="mPlinth"></div>
+  <div class="ctl"><span>Mirror</span><div class="seg" id="mirSeg" role="group" aria-label="Mirror one half onto the other"><button type="button" data-m="off" aria-pressed="true">Off</button><button type="button" data-m="left" aria-pressed="false">Left half</button><button type="button" data-m="right" aria-pressed="false">Right half</button></div></div>
+  <div class="row between"><span class="hint">Hover a part to see it. Untick to remove it.</span><button id="partsAll" class="linkbtn" type="button">Show all</button></div>
+  <div class="parts" id="parts"></div>
 </div>
 
 <div class="pane">
   <details id="settings"><summary>Claude API settings</summary>
-    <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:8px">
-      <label for="key">Anthropic API key</label><input type="password" id="key" placeholder="sk-ant-…" autocomplete="off">
+    <div class="field" style="margin-top:8px">
+      <label for="key">Anthropic API key</label><input type="text" id="key" placeholder="sk-ant-…" autocomplete="off" style="-webkit-text-security:disc">
       <label for="ws">Workspace ID (only if your key needs it)</label><input type="text" id="ws" placeholder="wrkspc_…">
       <label for="model">Model</label><input type="text" id="model" placeholder="claude-sonnet-5">
-      <p class="hint">Stored only on this computer (Figma client storage). The photo crop is sent to api.anthropic.com when you press Draft.</p>
-      <button id="saveSettings">Save</button>
+      <p class="hint">Stored only on this computer (Figma client storage). The cropped photos are sent to api.anthropic.com when you press Draft.</p>
+      <button id="saveSettings" type="button">Save</button>
     </div>
   </details>
 </div>
 
+/*EDITOR*/
 <script>
 /*CORE*/
 </script>
 <script>
 (function(){
+'use strict';
 const D = window.DBSig, R = D.RULES, $ = (id) => document.getElementById(id);
-const fresh = () => JSON.parse(JSON.stringify(D.DEFAULT_MODS));
-const S = { img:null, crop:null, engine:'a', height:'auto', color:R.colors['DB Red'], a:{scene:null,res:null,scaled:null,name:'Signature Graphic'}, mods: fresh(), key:'', model:'' };
+const freshMods = () => JSON.parse(JSON.stringify(D.DEFAULT_MODS));
+const state = { photos: [], active: 0, main: 0, tool: 'crop', height: 'auto', color: R.colors['DB Red'], showBands: true,
+  scene: null, scaled: null, res: null, name: 'Signature Graphic', mods: freshMods(), hover: null, key: '', model: '', ws: '' };
 const post = (m) => parent.postMessage({ pluginMessage: m }, '*');
-const msg = (t, err) => { const m=$('msg'); m.hidden=!t; m.textContent=t||''; m.className = err ? 'hint err' : 'hint'; };
+const toast = (t) => post({ type: 'notify', message: t });
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function showA(t, err){ const m = $('aMsg'); m.hidden = !t; m.textContent = t || ''; m.classList.toggle('err', !!err); }
 
-// swatches
-[['DB Red','#EC0016'],['Transitional Lilac','#AA99FF'],['Cold Black','#090F1B'],['Grey 300','#C9CCD2']].forEach(([n,c])=>{ const b=document.createElement('button'); b.className='sw'; b.style.background=c; b.title=n; b.setAttribute('aria-pressed',String(c===S.color)); b.onclick=()=>{S.color=c;[...$('swatches').children].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));draw();}; $('swatches').appendChild(b); });
+// ---------- what the shared photo panel needs from the plugin
+const host = {
+  isExample: () => false,
+  leaveExample(){},
+  newLandmark(){ state.scene = null; state.mods = freshMods(); $('landmark').value = ''; $('notes').value = ''; $('json').value = ''; state.name = 'Signature Graphic'; drawNotes(); drawParts(); update(); },
+  message: (t) => showA(t)
+};
+/*PHOTOS*/
 
-// photo + crop
-const cv=$('photo'), cx=cv.getContext('2d');
-function setImage(src){ const im=new Image(); im.onload=()=>{ S.img=im; S.crop={x:0,y:0,w:im.naturalWidth,h:im.naturalHeight}; paint(); }; im.src=src; }
-function paint(){ const im=S.img; $('empty').hidden=!!im; cv.hidden=!im; if(!im) return; const sc=Math.min(1,800/im.naturalWidth); cv.width=im.naturalWidth*sc|0; cv.height=im.naturalHeight*sc|0; cv._sc=sc; cx.drawImage(im,0,0,cv.width,cv.height);
-  const c=S.crop, x=c.x*sc,y=c.y*sc,w=c.w*sc,h=c.h*sc; cx.fillStyle='rgba(0,0,0,.5)'; cx.fillRect(0,0,cv.width,y); cx.fillRect(0,y+h,cv.width,cv.height-y-h); cx.fillRect(0,y,x,h); cx.fillRect(x+w,y,cv.width-x-w,h); cx.strokeStyle='#00B3FF'; cx.lineWidth=2; cx.setLineDash([6,4]); cx.strokeRect(x,y,w,h); cx.setLineDash([]); }
-let drag=null; const pos=(e)=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*cv.width/cv._sc,y:(e.clientY-r.top)/r.height*cv.height/cv._sc};};
-cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);drag=pos(e);};
-cv.onpointermove=e=>{if(!drag)return;const p=pos(e),im=S.img;const x0=Math.max(0,Math.min(drag.x,p.x)),y0=Math.max(0,Math.min(drag.y,p.y)),x1=Math.min(im.naturalWidth,Math.max(drag.x,p.x)),y1=Math.min(im.naturalHeight,Math.max(drag.y,p.y));if(x1-x0>8&&y1-y0>8){S.crop={x:x0,y:y0,w:x1-x0,h:y1-y0};paint();}};
-cv.onpointerup=()=>{drag=null;};
-$('file').onchange=e=>{const f=e.target.files[0]; if(f) setImage(URL.createObjectURL(f));};
-$('drop').ondragover=e=>e.preventDefault(); $('drop').ondrop=e=>{e.preventDefault();const f=e.dataTransfer.files[0]; if(f) setImage(URL.createObjectURL(f));};
-$('fromSel').onclick=()=>post({type:'get-selection-image'});
-function crop(maxSide){ const c=S.crop, sc=Math.min(1,maxSide/Math.max(c.w,c.h)); const k=document.createElement('canvas'); k.width=Math.max(1,Math.round(c.w*sc)); k.height=Math.max(1,Math.round(c.h*sc)); k.getContext('2d').drawImage(S.img,c.x,c.y,c.w,c.h,0,0,k.width,k.height); return k; }
-const th=(a)=> S.height!=='auto' ? +S.height : a>2.4?180:a>1.8?150:a>1.3?120:90;
+// ---------- swatches
+[['DB Red', R.colors['DB Red']], ['Transitional Lilac', R.colors['Transitional Lilac']], ['Cold Black', R.colors['Cold Black']], ['Grey 300', R.colors['Grey 300']]].forEach(([n, c]) => {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'sw'; b.style.background = c; b.title = n; b.setAttribute('aria-label', n); b.setAttribute('aria-pressed', String(c === state.color));
+  b.onclick = () => { state.color = c; [...$('swatches').children].forEach(x => x.setAttribute('aria-pressed', String(x === b))); draw(); };
+  $('swatches').appendChild(b);
+});
 
-// preview
-function sheet(res){ const pad=R.safe, W=res.W+pad*2, H=res.H+pad*2;
-  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W*3}"><defs><pattern id="g" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M1 0H0V1" fill="none" stroke="#ECEDF0" stroke-width=".06"/></pattern></defs><rect width="${W}" height="${H}" fill="url(#g)"/><rect x="${pad}" y="${pad}" width="${res.W}" height="${res.H}" fill="none" stroke="#FF7A8C" stroke-width=".15" stroke-dasharray=".8 .5"/>`;
-  res.bands.forEach((b,i)=>{ if(i%2===0) s+=`<rect x="${pad}" y="${pad+b.y0}" width="${res.W}" height="${b.y1-b.y0}" fill="#00B3FF" opacity=".06"/>`; });
-  return s+`<g fill="${S.color}" transform="translate(${pad} ${pad})">${res.bars.map(b=>`<rect x="${b.x}" y="${b.y}" width="2" height="${b.h}"/>`).join('')}</g></svg>`; }
-function draw(){ const res=S.a.res; if(!res){ $('sheet').innerHTML='<p class="hint" style="align-self:center">No draft yet</p>'; $('pills').innerHTML=''; $('notesOut').innerHTML=''; return; }
-  $('sheet').innerHTML=sheet(res); const v=D.validate(res);
-  $('pills').innerHTML=`<span class="pill ${v.errors?'err':v.warns?'warn':'ok'}">${v.errors?v.errors+' errors':v.warns?v.warns+' warnings':'All rules pass'}</span><span class="pill">${res.W} × ${res.H} dp</span><span class="pill">${res.bars.length} bars</span><span class="pill">${res.bands.length} rows</span>`;
-  const sc=S.a.scene; $('notesOut').innerHTML = sc ? [['Landmark',[sc.landmark+(sc.confidence?' · '+sc.confidence:'')]],['Kept',sc.retained],['Uncertain',sc.uncertain],['Cleanup',sc.cleanup]].filter(x=>x[1]&&x[1].length&&x[1][0]).map(([t,a])=>`<div><b>${t}:</b> ${a.map(esc).join(' · ')}</div>`).join('') : ''; }
-const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-// engine A – Anthropic Messages API, direct from the plugin UI
-function scaled(sc){ const s2=Object.assign({},sc); if(S.height!=='auto'&&sc.height&&+S.height!==sc.height){ const f=+S.height/sc.height; const K=['x','y','w','h','cx','cy','rx','ry']; s2.shapes=sc.shapes.map(q=>{const o=Object.assign({},q);K.forEach(k=>{if(typeof o[k]==='number')o[k]=o[k]*f;}); if(o.points)o.points=o.points.map(p=>[p[0]*f,p[1]*f]); return o;}); s2.bands=(sc.bands||[]).map(b=>({from:Math.round(b.from*f),to:Math.round(b.to*f),shift:b.shift})); s2.width=Math.round(sc.width*f); s2.height=+S.height; } return s2; }
-function update(){ if(!S.a.scene){ S.a.res=null; draw(); syncAdj(); return; } S.a.scaled=scaled(S.a.scene); S.a.res=D.fromScene(S.a.scaled,S.mods); draw(); syncAdj(); }
-function setScene(sc){ S.a.scene=sc; S.a.name=sc.landmark||'Signature Graphic'; S.mods=fresh(); $('json').value=JSON.stringify(sc,null,1); drawParts(); update(); }
-function drawParts(){ const hid=new Set(S.mods.hidden); $('parts').innerHTML=((S.a.scene&&S.a.scene.shapes)||[]).map((q,i)=>!q||!q.type?'':`<label class="part${hid.has(i)?' off':''}"><input type="checkbox" data-i="${i}" ${hid.has(i)?'':'checked'}><span>${esc(q.note||q.type)}</span><span class="pt">${(q.op||(q.type==='windows'?'cut':'add'))==='cut'?'opening':'mass'}</span></label>`).join(''); }
-function syncAdj(){ const m=S.mods, r=S.a.res; $('mOpen').value=m.openingSize; $('mOpenO').textContent=Math.round(m.openingSize*100)+'%'; $('mDensity').value=m.density; $('mDensityO').textContent=Math.round(m.density*100)+'%'; $('mSimplify').value=m.simplify; $('mSimplifyO').textContent=r&&r.openings?(r.openings.total-r.openings.kept)+' removed':'';
-  $('rowCount').textContent=r?r.bands.length+' rows':'–'; $('mOffset').checked=m.rowOffset; $('mPlinth').checked=m.plinth;
-  [...$('gapSeg').children].forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.g===(m.rowGap>=4?4:1)))); [...$('mirSeg').children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.m===m.mirror)));
-  $('adjust').querySelectorAll('input,button').forEach(el=>{ if(el.id!=='rowCount') el.disabled=!S.a.scene; }); if(r) $('rowMinus').disabled=r.bands.length<=1; }
-[['mOpen','openingSize'],['mDensity','density'],['mSimplify','simplify']].forEach(([id,k])=>$(id).oninput=e=>{S.mods[k]=+e.target.value;update();});
-$('rowMinus').onclick=()=>{S.mods.rowDelta--;update();};
-$('rowPlus').onclick=()=>{const n=S.a.res&&S.a.res.bands.length;S.mods.rowDelta++;update();if(S.a.res&&S.a.res.bands.length===n){S.mods.rowDelta--;update();}};
-$('mOffset').onchange=e=>{S.mods.rowOffset=e.target.checked;update();}; $('mPlinth').onchange=e=>{S.mods.plinth=e.target.checked;update();};
-$('gapSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.mods.rowGap=+b.dataset.g;update();};
-$('mirSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.mods.mirror=b.dataset.m;update();};
-$('parts').onchange=e=>{const i=+e.target.dataset.i,h=new Set(S.mods.hidden);e.target.checked?h.delete(i):h.add(i);S.mods.hidden=[...h];drawParts();update();};
-$('partsAll').onclick=()=>{S.mods.hidden=[];drawParts();update();}; $('modReset').onclick=()=>{S.mods=fresh();drawParts();update();};
-function parseJSON(text){ try{return JSON.parse(text);}catch(e){} const f=text.match(/```(?:json)?\s*([\s\S]*?)```/); if(f){try{return JSON.parse(f[1]);}catch(e){}} const a=text.indexOf('{'), b=text.lastIndexOf('}'); if(a>=0&&b>a) return JSON.parse(text.slice(a,b+1)); throw new Error('No JSON in reply'); }
-let ctl=null;
-async function draft(revise){
-  if(!S.key){ $('settings').open=true; msg('Add your Anthropic API key under Claude API settings first.',true); return; }
-  if(!S.img){ msg('Choose a photo first.',true); return; }
-  const k=crop(1400); const data=k.toDataURL('image/jpeg',0.9).split(',')[1];
-  const kk=crop(700), a=S.crop.h/S.crop.w, sk=D.sketch(kk.getContext('2d').getImageData(0,0,kk.width,kk.height),{height:S.height!=='auto'?+S.height:(a>2.4?180:a>1.8?150:a>1.3?120:90)});
-  const prompt=D.buildPrompt({height:S.height==='auto'?null:+S.height,landmark:$('landmark').value.trim(),sketch:sk,hasPhoto:true,notes:$('notes').value.trim(),previous:revise?D.bakeScene(S.a.scaled,S.mods):null,feedback:revise?$('aFeedback').value.trim():''});
-  ctl=new AbortController(); busy(true); msg('');
-  try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctl.signal,headers:{'content-type':'application/json','x-api-key':S.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true',...(S.ws?{'anthropic-workspace-id':S.ws}:{})},
-      body:JSON.stringify({model:S.model||'claude-sonnet-5',max_tokens:6000,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data}},{type:'text',text:prompt}]}]})});
-    const j=await r.json(); if(!r.ok) throw new Error((j.error&&j.error.message)||('HTTP '+r.status));
-    const text=(j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n');
-    const sc=parseJSON(text); if(!sc.shapes||!sc.shapes.length) throw new Error('The plan had no shapes. Try again or tighten the crop.');
-    setScene(sc); if(revise) $('aFeedback').value='';
-  }catch(e){ if(e.name!=='AbortError') msg('Claude request failed: '+e.message,true); }
-  finally{ busy(false); ctl=null; }
+// ---------- preview with row shading and hover highlight of a part
+function sheetSVG(res){
+  const pad = R.safe, W = res.W + pad*2, H = res.H + pad*2, meas = '#0090D1';
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W*3}" role="img" aria-label="${esc(state.name)} draft, ${res.W} by ${res.H} dp"><defs><pattern id="g" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M1 0H0V1" fill="none" stroke="#ECEDF0" stroke-width=".06"/></pattern></defs><rect width="${W}" height="${H}" fill="url(#g)"/><rect x="${pad}" y="${pad}" width="${res.W}" height="${res.H}" fill="none" stroke="#FF7A8C" stroke-width=".15" stroke-dasharray=".8 .5"/>`;
+  if (state.showBands) res.bands.forEach((b, i) => { if (i % 2 === 0) s += `<rect x="${pad}" y="${pad+b.y0}" width="${res.W}" height="${b.y1-b.y0}" fill="${meas}" opacity=".06"/>`; });
+  s += `<g fill="${state.color}" transform="translate(${pad} ${pad})">${res.bars.map(b => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"/>`).join('')}</g>`;
+  const shp = state.hover != null && state.scaled && state.scaled.shapes[state.hover];
+  if (shp) s += `<g transform="translate(${pad + res.scene.offsetX} ${pad + res.H}) scale(1 -1)"><path d="${D.shapePath(shp)}" fill="${meas}" fill-opacity=".14" stroke="${meas}" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-dasharray="4 3"/></g>`;
+  return s + '</svg>';
 }
-function busy(on){ $('aBusy').hidden=!on; $('aStop').hidden=!on; $('aRun').disabled=on; $('aRevise').disabled=on; }
-$('aRun').onclick=()=>draft(false); $('aRevise').onclick=()=>{ if(!S.a.scene){msg('Draft a plan first.',true);return;} draft(true); }; $('aStop').onclick=()=>ctl&&ctl.abort();
-$('apply').onclick=()=>{ try{ setScene(JSON.parse($('json').value)); msg(''); }catch(e){ msg('JSON error: '+e.message,true); } };
+function draw(){
+  const res = state.res;
+  if (!res) { $('aSheet').innerHTML = '<p class="hint" style="align-self:center">No draft yet</p>'; $('aStatus').innerHTML = ''; syncAdj(); return; }
+  $('aSheet').innerHTML = sheetSVG(res); const v = D.validate(res);
+  $('aStatus').innerHTML = `<span class="pill ${v.errors?'err':v.warns?'warn':'ok'}">${v.errors?v.errors+' rule errors':v.warns?v.warns+' warnings':'All rules pass'}</span><span class="pill">${res.W} × ${res.H} dp</span><span class="pill">${res.bars.length} bars</span><span class="pill">${res.bands.length} rows</span>`;
+  syncAdj();
+}
+function drawNotes(){
+  const sc = state.scene || {};
+  const list = (t, arr) => arr && arr.length ? `<div><h3>${t}</h3><ul>${arr.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : '';
+  const an = sc.analysis && typeof sc.analysis === 'object' ? Object.values(sc.analysis).flat().filter(v => typeof v === 'string' && v.trim()) : [];
+  $('aNotes').innerHTML = (sc.landmark ? `<div><h3>Landmark</h3><ul><li>${esc(sc.landmark)}${sc.confidence ? ` · confidence ${esc(sc.confidence)}` : ''}</li></ul></div>` : '') + list('Read from the photos', an) + list('Kept', sc.retained) + list('Uncertain', sc.uncertain) + list('Cleanup', sc.cleanup);
+}
+function scaled(sc){
+  const s2 = Object.assign({}, sc);
+  if (state.height !== 'auto' && sc.height && +state.height !== sc.height) {
+    const f = +state.height / sc.height, K = ['x','y','w','h','cx','cy','rx','ry'];
+    s2.shapes = (sc.shapes || []).map(q => { const o = Object.assign({}, q); K.forEach(k => { if (typeof o[k] === 'number') o[k] = Math.round(o[k]*f*10)/10; }); if (o.points) o.points = o.points.map(p => [p[0]*f, p[1]*f]); return o; });
+    s2.bands = (sc.bands || []).map(b => Object.assign({}, b, { from: Math.round(b.from*f), to: Math.round(b.to*f) })); s2.width = Math.round(sc.width*f); s2.height = +state.height;
+  }
+  return s2;
+}
+function update(){
+  if (!state.scene) { state.res = null; state.scaled = null; draw(); return; }
+  try { state.scaled = scaled(state.scene); state.res = D.fromScene(state.scaled, state.mods); }
+  catch (e) { console.error(e); state.res = null; showA('The plan could not be drawn. Draft again.', true); }
+  draw();
+}
+function setScene(sc){ state.scene = sc; state.name = sc.landmark || 'Signature Graphic'; state.mods = freshMods(); state.hover = null; $('json').value = JSON.stringify(sc, null, 1); drawNotes(); drawParts(); update(); }
 
-// size
-$('sizeSeg').onclick=e=>{const b=e.target.closest('button'); if(!b) return; S.height=b.dataset.h; [...$('sizeSeg').children].forEach(x=>x.setAttribute('aria-pressed',String(x===b))); update();};
+// ---------- adjustments
+const DETAIL_NAMES = { 1: 'Essential', 2: 'Standard', 3: 'Rich' };
+function drawParts(){
+  const hid = new Set(state.mods.hidden);
+  $('parts').innerHTML = ((state.scene && state.scene.shapes) || []).map((q, i) => {
+    if (!q || !q.type) return '';
+    const op = q.op || (q.type === 'windows' ? 'cut' : 'add'), lv = D.levelOf(q), above = lv > state.mods.detail, kind = { cut: 'opening', offset: 'offset', pier: 'pier' }[op] || 'mass';
+    return `<label class="part${hid.has(i)?' off':''}${above?' above':''}" data-i="${i}"${above?` title="Shown at ${DETAIL_NAMES[lv]} detail"`:''}><input type="checkbox" data-i="${i}" ${hid.has(i)?'':'checked'}><span class="pn">${esc(q.note || q.type)}</span><span class="pt">${kind} · ${esc(q.type)} · L${lv}</span></label>`;
+  }).join('') || '<p class="hint">No parts yet.</p>';
+}
+function syncAdj(){
+  const m = state.mods, r = state.res, pct = (v) => Math.round(v*100) + '%';
+  $('mDetail').value = m.detail; $('mDetailO').textContent = DETAIL_NAMES[m.detail] + (r && r.detail && r.detail.hidden ? ` · ${r.detail.hidden} parts hidden` : '');
+  $('mOpen').value = m.openingSize; $('mOpenO').textContent = pct(m.openingSize);
+  $('mDensity').value = m.density; $('mDensityO').textContent = pct(m.density);
+  $('mSimplify').value = m.simplify; $('mSimplifyO').textContent = r && r.openings ? `${r.openings.total - r.openings.kept} removed` : pct(m.simplify);
+  $('rowCount').textContent = r ? r.bands.length + ' rows' : '–'; $('mOffset').checked = m.rowOffset; $('mPlinth').checked = m.plinth;
+  [...$('gapSeg').children].forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.g === (m.rowGap >= 4 ? 4 : 1))));
+  [...$('mirSeg').children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === m.mirror)));
+  $('adjust').querySelectorAll('input,button').forEach(el => { el.disabled = !state.scene; }); if (r) $('rowMinus').disabled = r.bands.length <= 1;
+}
+$('mDetail').addEventListener('input', e => { state.mods.detail = +e.target.value; update(); drawParts(); });
+[['mOpen','openingSize'], ['mDensity','density'], ['mSimplify','simplify']].forEach(([id, k]) => $(id).addEventListener('input', e => { state.mods[k] = +e.target.value; update(); }));
+$('rowMinus').onclick = () => { state.mods.rowDelta -= 1; update(); };
+$('rowPlus').onclick = () => { const n = state.res && state.res.bands.length; state.mods.rowDelta += 1; update(); if (state.res && state.res.bands.length === n) { state.mods.rowDelta -= 1; update(); toast('Rows are already as thin as the rules allow'); } };
+$('mOffset').onchange = e => { state.mods.rowOffset = e.target.checked; update(); };
+$('mPlinth').onchange = e => { state.mods.plinth = e.target.checked; update(); };
+$('gapSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; state.mods.rowGap = +b.dataset.g; update(); };
+$('mirSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; state.mods.mirror = b.dataset.m; update(); };
+$('parts').addEventListener('change', e => { const i = +e.target.dataset.i, h = new Set(state.mods.hidden); e.target.checked ? h.delete(i) : h.add(i); state.mods.hidden = [...h]; e.target.closest('.part').classList.toggle('off', !e.target.checked); update(); });
+$('parts').addEventListener('pointerover', e => { const p = e.target.closest('.part'), i = p ? +p.dataset.i : null; if (i !== state.hover) { state.hover = i; draw(); } });
+$('parts').addEventListener('pointerleave', () => { state.hover = null; draw(); });
+$('parts').addEventListener('focusin', e => { const p = e.target.closest('.part'); if (p) { state.hover = +p.dataset.i; draw(); } });
+$('parts').addEventListener('focusout', () => { state.hover = null; draw(); });
+$('partsAll').onclick = () => { state.mods.hidden = []; drawParts(); update(); };
+$('modReset').onclick = () => { state.mods = freshMods(); drawParts(); update(); };
+$('showBands').onchange = e => { state.showBands = e.target.checked; draw(); };
+$('sizeSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; state.height = b.dataset.h; [...$('sizeSeg').children].forEach(x => x.setAttribute('aria-pressed', String(x === b))); update(); refreshSketch(); };
 
-// place
-$('place').onclick=()=>{ const res=S.a.res; if(!res){msg('Nothing to place yet.',true);return;} const name='SG – '+S.a.name; post({type:'place-svg',name,svg:D.toSVG(res,{color:S.color,title:name,safeArea:$('safe').checked})}); };
+// ---------- Claude: Messages API straight from the plugin, streamed with room for thinking
+function parseJSON(text){ try { return JSON.parse(text); } catch (e) {} const f = text.match(/```(?:json)?\s*([\s\S]*?)```/); if (f) { try { return JSON.parse(f[1]); } catch (e) {} } const a = text.indexOf('{'), b = text.lastIndexOf('}'); if (a >= 0 && b > a) return JSON.parse(text.slice(a, b + 1)); throw new Error('No JSON in reply'); }
+async function readStream(r){ // server-sent events → answer text + stop reason
+  const rd = r.body.getReader(), dec = new TextDecoder(), out = { text: '', stop: null }, kinds = {}; let buf = '';
+  for (;;) { const { value, done } = await rd.read(); if (done) break; buf += dec.decode(value, { stream: true }); let i;
+    while ((i = buf.indexOf('\n\n')) >= 0) { const raw = buf.slice(0, i); buf = buf.slice(i + 2);
+      const data = raw.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).join(''); if (!data) continue; const ev = JSON.parse(data);
+      if (ev.type === 'content_block_start') kinds[ev.index] = ev.content_block && ev.content_block.type;
+      else if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta' && kinds[ev.index] === 'text') out.text += ev.delta.text;
+      else if (ev.type === 'message_delta' && ev.delta && ev.delta.stop_reason) out.stop = ev.delta.stop_reason;
+      else if (ev.type === 'error') throw new Error((ev.error && ev.error.message) || 'stream error'); } }
+  return out;
+}
+const toB64 = (canvas) => canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
+let ctl = null;
+async function draft(revise){
+  if (!state.key) { $('settings').open = true; showA('Add your Anthropic API key under Claude API settings first.', true); return; }
+  if (!state.photos.length) { showA('Add a photo first.', true); return; }
+  const order = photoOrder(), content = [];
+  order.forEach((p, i) => {
+    if (order.length > 1) content.push({ type: 'text', text: `Photo ${i + 1} (${i === 0 ? 'main view, ' : ''}${D.PHOTO_ROLES[p.role] || 'another angle'}):` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: toB64(cropCanvas(i === 0 ? 1400 : 1100, p)) } });
+  });
+  const full = makeSketch();
+  const prompt = D.buildPrompt({ height: state.height === 'auto' ? null : +state.height, landmark: $('landmark').value.trim(), notes: $('notes').value.trim(),
+    sketch: full && { text: full.text, cols: full.cols, rows: full.rows, cell: full.cell, widthDp: full.widthDp, heightDp: full.heightDp }, features: measuredFeatures(),
+    hasPhoto: true, photoCount: order.length, photos: order.map(p => ({ role: p.role, caption: (p.caption || '').trim() })),
+    previous: revise ? D.bakeScene(state.scaled, state.mods) : null, feedback: revise ? $('aFeedback').value.trim() : '' });
+  content.push({ type: 'text', text: prompt });
+  ctl = new AbortController(); busy(true, revise ? 'Claude is revising…' : 'Claude is planning the construction…'); showA('');
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: ctl.signal,
+      headers: Object.assign({ 'content-type': 'application/json', 'x-api-key': state.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, state.ws ? { 'anthropic-workspace-id': state.ws } : {}),
+      body: JSON.stringify({ model: state.model || 'claude-sonnet-5', max_tokens: 32000, stream: true, messages: [{ role: 'user', content }] }) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error((j.error && j.error.message) || ('HTTP ' + r.status)); }
+    const out = await readStream(r);
+    if (out.stop === 'refusal') throw new Error('Claude declined this request. Try a different photo or crop.');
+    let sc; try { sc = parseJSON(out.text); } catch (e) { throw new Error(out.stop === 'max_tokens' ? 'The plan was too long and got cut off. Draft again, or add a note such as "keep it simpler".' : 'Claude’s answer was not a valid plan. Draft again.'); }
+    if (!sc.shapes || !sc.shapes.length) throw new Error('The plan had no shapes. Try again or tighten the crop.');
+    if (revise && state.scene && state.scene.render && !sc.render) sc.render = state.scene.render;
+    setScene(sc); if (revise) $('aFeedback').value = '';
+  } catch (e) { if (e.name !== 'AbortError') showA('Claude request failed: ' + e.message, true); }
+  finally { busy(false); ctl = null; }
+}
+function busy(on, t){ $('aBusy').hidden = !on; $('aStop').hidden = !on; $('aRun').disabled = on; $('aRevise').disabled = on; if (t) $('aBusyText').textContent = t; }
+$('aRun').onclick = () => draft(false);
+$('aRevise').onclick = () => { if (!state.scene) { showA('Draft a plan first.', true); return; } draft(true); };
+$('aStop').onclick = () => ctl && ctl.abort();
+$('apply').onclick = () => { try { setScene(JSON.parse($('json').value)); showA(''); } catch (e) { showA('JSON error: ' + e.message, true); } };
 
-// settings
-$('saveSettings').onclick=()=>{ S.key=$('key').value.trim(); S.model=$('model').value.trim(); S.ws=$('ws').value.trim(); post({type:'save-settings',key:S.key,model:S.model,ws:S.ws}); $('settings').open=false; msg(''); };
+// ---------- place on the Figma canvas
+$('place').onclick = () => { const res = state.res; if (!res) { showA('Nothing to place yet.', true); return; } const name = 'SG – ' + state.name; post({ type: 'place-svg', name, svg: D.toSVG(res, { color: state.color, title: name, safeArea: $('safe').checked }) }); };
 
-// messages from main thread
-window.onmessage=(ev)=>{ const m=ev.data.pluginMessage; if(!m) return;
-  if(m.type==='settings'){ S.key=m.key; S.model=m.model; S.ws=m.ws||''; $('key').value=m.key; $('model').value=m.model; $('ws').value=S.ws; if(!m.hasKey) $('settings').open=true; }
-  if(m.type==='selection-changed'){ $('fromSel').disabled=!m.hasImage; }
-  if(m.type==='selection-image'){ const blob=new Blob([m.bytes]); setImage(URL.createObjectURL(blob)); S.a.name=m.name||S.a.name; }
-  if(m.type==='selection-none'){ msg('Select a layer with an image fill first.',true); }
-  if(m.type==='error'){ msg(m.message,true); } };
-post({type:'init'}); syncAdj();
+// ---------- settings
+$('saveSettings').onclick = () => { state.key = $('key').value.trim(); state.model = $('model').value.trim(); state.ws = $('ws').value.trim(); post({ type: 'save-settings', key: state.key, model: state.model, ws: state.ws }); $('settings').open = false; showA(''); };
+
+// ---------- images from the Figma selection
+$('fromSel').onclick = () => post({ type: 'get-selection-image' });
+window.addEventListener('message', async (ev) => {
+  const m = ev.data && ev.data.pluginMessage; if (!m) return;
+  if (m.type === 'settings') { state.key = m.key; state.model = m.model; state.ws = m.ws || ''; $('key').value = m.key; $('model').value = m.model; $('ws').value = state.ws; if (!m.hasKey) $('settings').open = true; }
+  if (m.type === 'selection-changed') $('fromSel').disabled = !m.hasImage;
+  if (m.type === 'selection-images') {
+    const room = MAX_PHOTOS - state.photos.length;
+    if (room <= 0) { toast('Up to 4 photos per landmark. Remove one first.'); return; }
+    for (const im of m.images.slice(0, room)) await addPhoto(URL.createObjectURL(new Blob([im.bytes])), im.name);
+    if (m.images.length > room) toast('Up to 4 photos per landmark. Extra images were skipped.');
+    if (!$('landmark').value && m.images[0]) state.name = m.images[0].name || state.name;
+  }
+  if (m.type === 'selection-none') showA('Select one or more layers with an image fill first.', true);
+  if (m.type === 'error') showA(m.message, true);
+});
+
+drawThumbs(); syncPhotoControls(); drawNotes(); drawParts(); update();
+post({ type: 'init' });
 })();
 </script>
 </body></html>
