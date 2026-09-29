@@ -956,6 +956,22 @@
     return L.join('\n');
   }
 
+  /** SVG path of a shape's outline in plan coordinates (y up), for hover highlighting in the front ends. */
+  function shapePath(s){
+    const n = (v) => Math.round(v*100)/100;
+    switch (s.type) {
+      case 'rect': case 'windows': return `M${n(s.x)} ${n(s.y)}h${n(s.w)}v${n(s.h)}h${n(-s.w)}Z`;
+      case 'poly': return (s.points||[]).map((p,i)=>(i?'L':'M')+n(p[0])+' '+n(p[1])).join('') + 'Z';
+      case 'gable': return `M${n(s.x)} ${n(s.y)}L${n(s.x+s.w)} ${n(s.y)}L${n(s.x+s.w/2)} ${n(s.y+s.h)}Z`;
+      case 'spire': return `M${n(s.cx-s.w/2)} ${n(s.y)}L${n(s.cx+s.w/2)} ${n(s.y)}L${n(s.cx)} ${n(s.y+s.h)}Z`;
+      case 'ellipse': return `M${n(s.cx-s.rx)} ${n(s.cy)}a${n(s.rx)} ${n(s.ry)} 0 1 0 ${n(2*s.rx)} 0a${n(s.rx)} ${n(s.ry)} 0 1 0 ${n(-2*s.rx)} 0Z`;
+      case 'dome': return `M${n(s.cx-s.rx)} ${n(s.y)}a${n(s.rx)} ${n(s.ry)} 0 0 0 ${n(2*s.rx)} 0Z`;
+      case 'arch': { const r=s.w/2, sp=s.y+s.h-r; return `M${n(s.x)} ${n(s.y)}V${n(sp)}a${n(r)} ${n(r)} 0 0 0 ${n(s.w)} 0V${n(s.y)}Z`; }
+      case 'pointed': { const rise=Math.min(s.h, s.w*0.866), sp=s.y+s.h-rise; return `M${n(s.x)} ${n(s.y)}V${n(sp)}Q${n(s.x)} ${n(sp+rise*0.6)} ${n(s.x+s.w/2)} ${n(s.y+s.h)}Q${n(s.x+s.w)} ${n(sp+rise*0.6)} ${n(s.x+s.w)} ${n(sp)}V${n(s.y)}Z`; }
+      default: return '';
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // 10. The AI prompt (Engine A)
   // ---------------------------------------------------------------------------
@@ -1110,7 +1126,7 @@
   // ---------------------------------------------------------------------------
   // exports
   // ---------------------------------------------------------------------------
-  const API = { PHOTO_ROLES, WORKED_EXAMPLE, pierRegions, offsetSampler, levelOf, bandLevel, mergeFineBands, analyze, featuresText, toLab, sketch, DEFAULT_MODS, applyShapeMods, applyRowMods, bakeScene, openingArea, RULES, normalizeScene, sceneSampler, sceneBands, fillBands, gridFromSampler, detectBands, render, validate, toSVG, fromScene, trace, buildPrompt, EXAMPLE_SCENE, cleanRuns };
+  const API = { shapePath, PHOTO_ROLES, WORKED_EXAMPLE, pierRegions, offsetSampler, levelOf, bandLevel, mergeFineBands, analyze, featuresText, toLab, sketch, DEFAULT_MODS, applyShapeMods, applyRowMods, bakeScene, openingArea, RULES, normalizeScene, sceneSampler, sceneBands, fillBands, gridFromSampler, detectBands, render, validate, toSVG, fromScene, trace, buildPrompt, EXAMPLE_SCENE, cleanRuns };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   root.DBSig = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

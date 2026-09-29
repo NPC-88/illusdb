@@ -167,6 +167,7 @@ details[open] summary{margin-bottom:10px}
       <div class="card">
         <div class="row between"><p class="eyebrow">1 · Reference photos</p><button id="newLandmark" class="linkbtn" type="button">New landmark</button></div>
         <div class="row" id="exRow"><span class="hint">Examples:</span></div>
+        <!--photo-panel: shared with the Figma plugin (build.py copies everything up to the end marker)-->
         <div class="thumbs" id="thumbs"></div>
         <input id="file" class="sr" type="file" accept="image/png,image/jpeg,image/webp" multiple>
         <div class="field" id="photoMeta" hidden>
@@ -201,6 +202,7 @@ details[open] summary{margin-bottom:10px}
           <label class="row" style="font-weight:500;gap:6px"><input type="checkbox" id="skInv"> Dark sky / night photo</label>
           <p class="hint">The main view’s silhouette sets the proportions. Higher contrast keeps only the strongest features and the clearest openings. If sky and building mix, use Pick sky and Pick building on the photo, or trace the landmark with Outline.</p>
         </div>
+        <!--/photo-panel-->
       </div>
 
       <div class="card">
@@ -317,6 +319,7 @@ details[open] summary{margin-bottom:10px}
     </div>
   </main>
 </div>
+<!--editor-->
 <dialog id="editor" aria-labelledby="edTitle">
   <div class="ed-head">
     <h2 id="edTitle">Photo editor</h2>
@@ -331,6 +334,7 @@ details[open] summary{margin-bottom:10px}
     <aside class="ed-side" id="edSide"><p class="hint">Scroll to pan, Ctrl/⌘ + scroll or +/− to zoom, hold Space and drag to move the view. Drag an outline point to adjust it.</p></aside>
   </div>
 </dialog>
+<!--/editor-->
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -1292,6 +1296,22 @@ details[open] summary{margin-bottom:10px}
     return L.join('\n');
   }
 
+  /** SVG path of a shape's outline in plan coordinates (y up), for hover highlighting in the front ends. */
+  function shapePath(s){
+    const n = (v) => Math.round(v*100)/100;
+    switch (s.type) {
+      case 'rect': case 'windows': return `M${n(s.x)} ${n(s.y)}h${n(s.w)}v${n(s.h)}h${n(-s.w)}Z`;
+      case 'poly': return (s.points||[]).map((p,i)=>(i?'L':'M')+n(p[0])+' '+n(p[1])).join('') + 'Z';
+      case 'gable': return `M${n(s.x)} ${n(s.y)}L${n(s.x+s.w)} ${n(s.y)}L${n(s.x+s.w/2)} ${n(s.y+s.h)}Z`;
+      case 'spire': return `M${n(s.cx-s.w/2)} ${n(s.y)}L${n(s.cx+s.w/2)} ${n(s.y)}L${n(s.cx)} ${n(s.y+s.h)}Z`;
+      case 'ellipse': return `M${n(s.cx-s.rx)} ${n(s.cy)}a${n(s.rx)} ${n(s.ry)} 0 1 0 ${n(2*s.rx)} 0a${n(s.rx)} ${n(s.ry)} 0 1 0 ${n(-2*s.rx)} 0Z`;
+      case 'dome': return `M${n(s.cx-s.rx)} ${n(s.y)}a${n(s.rx)} ${n(s.ry)} 0 0 0 ${n(2*s.rx)} 0Z`;
+      case 'arch': { const r=s.w/2, sp=s.y+s.h-r; return `M${n(s.x)} ${n(s.y)}V${n(sp)}a${n(r)} ${n(r)} 0 0 0 ${n(s.w)} 0V${n(s.y)}Z`; }
+      case 'pointed': { const rise=Math.min(s.h, s.w*0.866), sp=s.y+s.h-rise; return `M${n(s.x)} ${n(s.y)}V${n(sp)}Q${n(s.x)} ${n(sp+rise*0.6)} ${n(s.x+s.w/2)} ${n(s.y+s.h)}Q${n(s.x+s.w)} ${n(sp+rise*0.6)} ${n(s.x+s.w)} ${n(sp)}V${n(s.y)}Z`; }
+      default: return '';
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // 10. The AI prompt (Engine A)
   // ---------------------------------------------------------------------------
@@ -1446,7 +1466,7 @@ details[open] summary{margin-bottom:10px}
   // ---------------------------------------------------------------------------
   // exports
   // ---------------------------------------------------------------------------
-  const API = { PHOTO_ROLES, WORKED_EXAMPLE, pierRegions, offsetSampler, levelOf, bandLevel, mergeFineBands, analyze, featuresText, toLab, sketch, DEFAULT_MODS, applyShapeMods, applyRowMods, bakeScene, openingArea, RULES, normalizeScene, sceneSampler, sceneBands, fillBands, gridFromSampler, detectBands, render, validate, toSVG, fromScene, trace, buildPrompt, EXAMPLE_SCENE, cleanRuns };
+  const API = { shapePath, PHOTO_ROLES, WORKED_EXAMPLE, pierRegions, offsetSampler, levelOf, bandLevel, mergeFineBands, analyze, featuresText, toLab, sketch, DEFAULT_MODS, applyShapeMods, applyRowMods, bakeScene, openingArea, RULES, normalizeScene, sceneSampler, sceneBands, fillBands, gridFromSampler, detectBands, render, validate, toSVG, fromScene, trace, buildPrompt, EXAMPLE_SCENE, cleanRuns };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   root.DBSig = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
@@ -1479,22 +1499,6 @@ function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 const SW = [['DB Red',R.colors['DB Red']],['Transitional Lilac',R.colors['Transitional Lilac']],['Cold Black',R.colors['Cold Black']],['Grey 300',R.colors['Grey 300']],['Clear White',R.colors['Clear White']]];
 SW.forEach(([n,c])=>{ const b=document.createElement('button'); b.type='button'; b.className='sw'; b.style.background=c; b.title=n; b.setAttribute('aria-label',n); b.setAttribute('aria-pressed', String(c===state.color)); b.onclick=()=>{ state.color=c; [...$('swatches').children].forEach(x=>x.setAttribute('aria-pressed',String(x===b))); draw(); drawRefs(); }; $('swatches').appendChild(b); });
 
-// ---------- part outline (for hover highlight), in plan coordinates
-function shapePath(s){
-  const n = (v) => Math.round(v*100)/100;
-  switch (s.type) {
-    case 'rect': case 'windows': return `M${n(s.x)} ${n(s.y)}h${n(s.w)}v${n(s.h)}h${n(-s.w)}Z`;
-    case 'poly': return (s.points||[]).map((p,i)=>(i?'L':'M')+n(p[0])+' '+n(p[1])).join('') + 'Z';
-    case 'gable': return `M${n(s.x)} ${n(s.y)}L${n(s.x+s.w)} ${n(s.y)}L${n(s.x+s.w/2)} ${n(s.y+s.h)}Z`;
-    case 'spire': return `M${n(s.cx-s.w/2)} ${n(s.y)}L${n(s.cx+s.w/2)} ${n(s.y)}L${n(s.cx)} ${n(s.y+s.h)}Z`;
-    case 'ellipse': return `M${n(s.cx-s.rx)} ${n(s.cy)}a${n(s.rx)} ${n(s.ry)} 0 1 0 ${n(2*s.rx)} 0a${n(s.rx)} ${n(s.ry)} 0 1 0 ${n(-2*s.rx)} 0Z`;
-    case 'dome': return `M${n(s.cx-s.rx)} ${n(s.y)}a${n(s.rx)} ${n(s.ry)} 0 0 0 ${n(2*s.rx)} 0Z`;
-    case 'arch': { const r=s.w/2, sp=s.y+s.h-r; return `M${n(s.x)} ${n(s.y)}V${n(sp)}a${n(r)} ${n(r)} 0 0 0 ${n(s.w)} 0V${n(s.y)}Z`; }
-    case 'pointed': { const rise=Math.min(s.h, s.w*0.866), sp=s.y+s.h-rise; return `M${n(s.x)} ${n(s.y)}V${n(sp)}Q${n(s.x)} ${n(sp+rise*0.6)} ${n(s.x+s.w/2)} ${n(s.y+s.h)}Q${n(s.x+s.w)} ${n(sp+rise*0.6)} ${n(s.x+s.w)} ${n(sp)}V${n(s.y)}Z`; }
-    default: return '';
-  }
-}
-
 // ---------- construction sheet preview
 function sheetSVG(res){
   const o = { color: state.color, bands: state.showBands, dark: state.dark };
@@ -1513,7 +1517,7 @@ function sheetSVG(res){
   s += `<g fill="${o.color}" transform="translate(${pad} ${pad})">` + res.bars.map(b=>`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"/>`).join('') + `</g>`;
   if (state.hover != null && state.scaled) {
     const shp = state.scaled.shapes[state.hover];
-    if (shp) s += `<g transform="translate(${pad + res.scene.offsetX} ${pad + res.H}) scale(1 -1)"><path d="${shapePath(shp)}" fill="${meas}" fill-opacity=".14" stroke="${meas}" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-dasharray="4 3"/></g>`;
+    if (shp) s += `<g transform="translate(${pad + res.scene.offsetX} ${pad + res.H}) scale(1 -1)"><path d="${D.shapePath(shp)}" fill="${meas}" fill-opacity=".14" stroke="${meas}" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-dasharray="4 3"/></g>`;
   }
   s += `<g stroke="${meas}" stroke-width=".15" fill="none"><path d="M${pad} ${H+3}H${pad+res.W}M${pad} ${H+2}v2M${pad+res.W} ${H+2}v2"/><path d="M-4 ${pad}V${pad+res.H}M-5 ${pad}h2M-5 ${pad+res.H}h2"/></g>`;
   s += `<text x="${pad+res.W/2}" y="${H+8}" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="3" fill="${meas}">${res.W} dp</text>`;
@@ -1617,6 +1621,18 @@ $('parts').addEventListener('focusout', () => { state.hover = null; draw(); });
 $('partsAll').onclick = () => { state.mods.hidden = []; drawParts(); update(); };
 $('modReset').onclick = () => { state.mods = freshMods(); drawParts(); update(); };
 
+// ---------- what the shared photo panel needs from this page
+const host = {
+  isExample: () => state.example,
+  leaveExample(){ state.scene = null; state.example = false; state.mods = freshMods(); $('landmark').value = ''; state.name = 'Signature graphic'; $('exRow').hidden = true; drawNotes(); drawParts(); update(); },
+  newLandmark(){ host.leaveExample(); $('notes').value = ''; },
+  message: (t) => showA(t)
+};
+// Shared photo panel: up to 4 photos with roles and captions, crop / outline / sky and building picks,
+// undo/redo, the expanded zoom editor and the measured silhouette. Inlined by build.py into the web tool
+// (web/page.src.html) and the Figma plugin UI (figma/ui.src.html) inside their main closure. The host provides
+// `state` (photos, active, main, tool, height), `$`, `D`, `toast` and a `host` object:
+// { newLandmark(), isExample(), leaveExample(), message(text) }. Element ids are the same in both pages.
 // ---------- photos (up to 4), crop, sky/building picks
 const MAX_PHOTOS = 4;
 const cv = $('photo'), ctx = cv.getContext('2d');
@@ -1663,7 +1679,7 @@ function removePhoto(i){
   drawThumbs(); syncPhotoControls(); paintPhoto(); refreshSketch(); syncHistory();
 }
 $('makeMain').onclick = () => { state.main = state.active; drawThumbs(); refreshSketch(); toast('Photo ' + (state.main+1) + ' now sets the proportions'); };
-$('newLandmark').onclick = () => { state.photos = []; state.active = 0; state.main = 0; state.scene = null; state.example = false; state.mods = freshMods(); $('landmark').value=''; $('notes').value=''; state.name = 'Signature graphic'; $('exRow').hidden = true; drawNotes(); drawParts(); update(); drawThumbs(); paintPhoto(); refreshSketch(); syncHistory(); showA(''); };
+$('newLandmark').onclick = () => { state.photos = []; state.active = 0; state.main = 0; host.newLandmark(); drawThumbs(); paintPhoto(); refreshSketch(); syncHistory(); host.message(''); };
 
 // ---------- undo / redo for photo edits (crop, outline, picks, silhouette sliders)
 // Each entry is a snapshot of one photo's edit state taken just before a change.
@@ -1919,12 +1935,12 @@ $('pCaption').addEventListener('input', e => { const p = act(); if (p) p.caption
 async function takeFiles(list){
   const files = [...(list || [])].filter(f => /^image\//.test(f.type));
   if (!files.length) { toast('Choose PNG, JPG or WebP photos'); return; }
-  if (state.example) { state.photos = []; state.main = 0; state.scene = null; state.example = false; state.mods = freshMods(); $('landmark').value=''; state.name = 'Signature graphic'; $('exRow').hidden = true; drawNotes(); drawParts(); update(); }
+  if (host.isExample()) { state.photos = []; state.main = 0; host.leaveExample(); }
   const room = MAX_PHOTOS - state.photos.length;
   if (room <= 0) { toast('Up to 4 photos per landmark. Remove one first.'); return; }
   for (const f of files.slice(0, room)) await addPhoto(URL.createObjectURL(f), f.name);
   if (files.length > room) toast('Up to 4 photos per landmark. Extra files were skipped.');
-  showA(state.photos.length > 1 ? 'Photo 1 is the main view. Crop each photo, then press “Draft with Claude”.' : 'Crop to the landmark, then press “Draft with Claude”. Add more photos from other angles if you have them.');
+  host.message(state.photos.length > 1 ? 'Photo 1 is the main view. Crop each photo, then press “Draft with Claude”.' : 'Crop to the landmark, then press “Draft with Claude”. Add more photos from other angles if you have them.');
 }
 $('file').onchange = e => { takeFiles(e.target.files); e.target.value = ''; };
 const drop = $('drop');
@@ -1943,6 +1959,7 @@ function measuredFeatures(){
   catch (e) { console.error(e); return null; }
 }
 function photoOrder(){ const m = mainPhoto(); return m ? [m, ...state.photos.filter(p => p !== m)] : []; }
+
 
 // ---------- Claude
 const ERR = { not_granted: 'Claude access was declined for this page.', sampling_disabled: 'Claude is not available for this account.', rate_limited: 'Too many requests right now. Wait a moment and try again.', session_expired: 'Your session expired. Sign in again, then retry.', image_rejected: 'That photo could not be sent. Try a smaller JPG or PNG.', images_unavailable: 'This view cannot send photos to Claude. Open the page on claude.ai.', refused: 'Claude declined this request. Try a different photo or crop.', invalid_json: 'Claude’s answer was not a valid plan. Press Draft again.', empty_completion: 'Claude returned nothing. Try a tighter crop.', upstream_error: 'The connection dropped. Try again.', prompt_too_large: 'The request was too large. Shorten the notes.' };

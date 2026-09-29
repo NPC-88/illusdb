@@ -40,6 +40,7 @@ The no-AI trace engine is still in the core as `trace()` but is no longer shown 
 
 ```
 core/dbsig-core.js     shared engine: rules, renderer, validator, adjustments (fromScene mods, bakeScene), AI prompt, SVG export, trace()
+web/photos.js          shared photo panel (photos, tools, undo/redo, zoom editor, silhouette), used by the web tool and the plugin
 web/page.src.html      page source → build.py → web/signature-graphics-drafter.html (claude.ai artifact)
                                             and server/public/index.html (team server)
 server/server.js       team server: password login + Anthropic API proxy (company key)
@@ -47,7 +48,7 @@ render.yaml            one-click Render deployment
 figma/                 Figma plugin: manifest.json, code.js, ui.src.html → build.py → ui.html
 data/examples_dp.json  the 21 DB reference landmarks, pulled from the backlight PDFs as exact dp bars
 test/                  node test harness (validator + trace previews + detail levels), Playwright UI checks
-                       (outline_test.js: outline + undo/redo, editor_test.js: expanded editor)
+                       (outline_test.js: outline + undo/redo, editor_test.js: expanded editor, figma_ui_test.js: plugin UI)
 build.py               inlines the core (and sample data) into the web page and the plugin UI
 ```
 
@@ -102,7 +103,9 @@ To change the password, update `TEAM_PASSWORD` in Render and redeploy. Existing 
 
 1. In Figma desktop, go to Plugins → Development → Import plugin from manifest… and pick `figma/manifest.json`.
 2. Open it and add an Anthropic API key under Claude API settings. The key is stored only in Figma's client storage on that machine. The model field defaults to `claude-sonnet-5`; change it to any model your key can use.
-3. Select an image layer and press Use selected image, or upload a photo. Crop, draft, fine-tune under Adjust, then Place on canvas.
+3. Select one or more image layers and press **Use selected images** (up to 4), or upload photos. Crop, outline, pick sky and building, set each photo's role and caption, draft, fine-tune under Adjust, then **Place on canvas**.
+
+The plugin has the web tool's photo panel: several photos with roles and captions, Crop / Outline / Sky / Building with Undo/Redo, the expanded zoom editor, the silhouette preview with its sliders, "Read from the photos" and hover highlighting of parts. It is the same code: `build.py` copies the web tool's photo panel markup, its stylesheet and `web/photos.js` into `figma/ui.html`. The plugin also keeps the JSON plan editor.
 
 ## Plan format
 
