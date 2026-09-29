@@ -1261,20 +1261,36 @@ $('mirSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.mods.m
 $('parts').onchange=e=>{const i=+e.target.dataset.i,h=new Set(S.mods.hidden);e.target.checked?h.delete(i):h.add(i);S.mods.hidden=[...h];drawParts();update();};
 $('partsAll').onclick=()=>{S.mods.hidden=[];drawParts();update();}; $('modReset').onclick=()=>{S.mods=fresh();drawParts();update();};
 function parseJSON(text){ try{return JSON.parse(text);}catch(e){} const f=text.match(/```(?:json)?\s*([\s\S]*?)```/); if(f){try{return JSON.parse(f[1]);}catch(e){}} const a=text.indexOf('{'), b=text.lastIndexOf('}'); if(a>=0&&b>a) return JSON.parse(text.slice(a,b+1)); throw new Error('No JSON in reply'); }
+// server-sent events → text of the answer + stop reason
+async function readStream(r){
+  const rd=r.body.getReader(), dec=new TextDecoder(), out={text:'',stop:null}, kinds={}; let buf='';
+  for(;;){ const {value,done}=await rd.read(); if(done) break; buf+=dec.decode(value,{stream:true}); let i;
+    while((i=buf.indexOf('\n\n'))>=0){ const raw=buf.slice(0,i); buf=buf.slice(i+2);
+      const data=raw.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim()).join(''); if(!data) continue; const ev=JSON.parse(data);
+      if(ev.type==='content_block_start') kinds[ev.index]=ev.content_block&&ev.content_block.type;
+      else if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.type==='text_delta'&&kinds[ev.index]==='text') out.text+=ev.delta.text;
+      else if(ev.type==='message_delta'&&ev.delta&&ev.delta.stop_reason) out.stop=ev.delta.stop_reason;
+      else if(ev.type==='error') throw new Error((ev.error&&ev.error.message)||'stream error'); } }
+  return out;
+}
 let ctl=null;
 async function draft(revise){
   if(!S.key){ $('settings').open=true; msg('Add your Anthropic API key under Claude API settings first.',true); return; }
   if(!S.img){ msg('Choose a photo first.',true); return; }
   const k=crop(1400); const data=k.toDataURL('image/jpeg',0.9).split(',')[1];
   const kk=crop(700), a=S.crop.h/S.crop.w, sk=D.sketch(kk.getContext('2d').getImageData(0,0,kk.width,kk.height),{height:S.height!=='auto'?+S.height:(a>2.4?180:a>1.8?150:a>1.3?120:90)});
-  const prompt=D.buildPrompt({height:S.height==='auto'?null:+S.height,landmark:$('landmark').value.trim(),sketch:sk,hasPhoto:true,notes:$('notes').value.trim(),previous:revise?D.bakeScene(S.a.scaled,S.mods):null,feedback:revise?$('aFeedback').value.trim():''});
+  let features=null; try{ const f=D.analyze(kk.getContext('2d').getImageData(0,0,kk.width,kk.height),{height:sk.heightDp}); features={widthDp:f.widthDp,heightDp:f.heightDp,profile:f.profile,lines:f.lines,peaks:f.peaks,rows:f.rows,singles:f.singles}; }catch(e){}
+  const prompt=D.buildPrompt({height:S.height==='auto'?null:+S.height,landmark:$('landmark').value.trim(),sketch:sk,features,hasPhoto:true,notes:$('notes').value.trim(),previous:revise?D.bakeScene(S.a.scaled,S.mods):null,feedback:revise?$('aFeedback').value.trim():''});
   ctl=new AbortController(); busy(true); msg('');
   try{
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctl.signal,headers:{'content-type':'application/json','x-api-key':S.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true',...(S.ws?{'anthropic-workspace-id':S.ws}:{})},
-      body:JSON.stringify({model:S.model||'claude-sonnet-5',max_tokens:6000,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data}},{type:'text',text:prompt}]}]})});
-    const j=await r.json(); if(!r.ok) throw new Error((j.error&&j.error.message)||('HTTP '+r.status));
-    const text=(j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n');
-    const sc=parseJSON(text); if(!sc.shapes||!sc.shapes.length) throw new Error('The plan had no shapes. Try again or tighten the crop.');
+      // streamed with room for Claude's thinking, which counts toward max_tokens (rich plans need it)
+      body:JSON.stringify({model:S.model||'claude-sonnet-5',max_tokens:32000,stream:true,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data}},{type:'text',text:prompt}]}]})});
+    if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error((j.error&&j.error.message)||('HTTP '+r.status)); }
+    const out=await readStream(r);
+    if(out.stop==='refusal') throw new Error('Claude declined this request. Try a different photo or crop.');
+    let sc; try{ sc=parseJSON(out.text); }catch(e){ throw new Error(out.stop==='max_tokens'?'The plan was too long and got cut off. Draft again, or add a note such as "keep it simpler".':'Claude’s answer was not a valid plan. Draft again.'); }
+    if(!sc.shapes||!sc.shapes.length) throw new Error('The plan had no shapes. Try again or tighten the crop.');
     setScene(sc); if(revise) $('aFeedback').value='';
   }catch(e){ if(e.name!=='AbortError') msg('Claude request failed: '+e.message,true); }
   finally{ busy(false); ctl=null; }
