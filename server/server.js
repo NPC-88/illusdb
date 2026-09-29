@@ -43,8 +43,9 @@ const DAY = 86400000, HOUR = 3600000;
 // ---------------------------------------------------------------- sessions
 function sign(v) { return crypto.createHmac('sha256', CFG.secret).update(v).digest('base64url'); }
 function makeSession() { const v = Date.now() + '.' + crypto.randomBytes(9).toString('base64url'); return v + '.' + sign(v); }
+// a session is the login cookie (web page) or "Authorization: Bearer <token>" from POST /api/token (Figma plugin)
 function readSession(req) {
-  const m = (req.headers.cookie || '').match(new RegExp('(?:^|;\\s*)' + COOKIE + '=([^;]+)'));
+  const m = (req.headers.cookie || '').match(new RegExp('(?:^|;\\s*)' + COOKIE + '=([^;]+)')) || (req.headers.authorization || '').match(/^Bearer\s+([\w.-]+)$/);
   if (!m) return null;
   const parts = m[1].split('.'); if (parts.length !== 3) return null;
   const v = parts[0] + '.' + parts[1];
@@ -249,6 +250,21 @@ const server = http.createServer(async (req, res) => {
       setCookie(req, res, makeSession(), 30 * 86400);
       res.writeHead(303, { Location: '/' }); return res.end();
     }
+    // the Figma plugin runs in a sandboxed frame (origin "null") and signs in with a token, never a cookie
+    if (url.pathname === '/api/token' || url.pathname === '/api/draft') {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, { 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'content-type, authorization', 'Access-Control-Max-Age': '86400' });
+        return res.end();
+      }
+    }
+    if (req.method === 'POST' && url.pathname === '/api/token') {
+      const ip = clientIp(req);
+      if (!allow('login:' + ip, 10, 15 * 60000)) return send(res, 429, { error: 'rate_limited', message: 'Too many attempts. Wait 15 minutes.' });
+      let body; try { body = await readBody(req, 4096); } catch (e) { return send(res, 400, { error: 'bad_request', message: 'The request could not be read.' }); }
+      if (!passwordOk(body.password)) return send(res, 401, { error: 'wrong_password', message: 'That team password is not right.' });
+      return send(res, 200, { token: makeSession(), days: 30 });
+    }
     if (url.pathname === '/logout') { setCookie(req, res, '', 0); res.writeHead(303, { Location: '/' }); return res.end(); }
 
     const session = readSession(req);
@@ -257,7 +273,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, fs.readFileSync(PAGE), 'text/html; charset=utf-8');
     }
     if (url.pathname.startsWith('/api/')) {
-      if (!session) return send(res, 401, { error: 'session_expired', message: 'Your sign-in expired. Reload the page and sign in again.' });
+      if (!session) return send(res, 401, { error: 'session_expired', message: req.headers.authorization ? 'Your team sign-in expired. Sign in again under Claude settings.' : 'Your sign-in expired. Reload the page and sign in again.' });
       if (req.method === 'POST' && url.pathname === '/api/draft') return await draft(req, res);
       if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, { model: CFG.model, modelComplex: CFG.modelComplex, perHour: CFG.perHour });
     }

@@ -27,14 +27,18 @@ figma.ui.onmessage = async (msg) => {
     const key = await figma.clientStorage.getAsync('anthropicKey');
     const model = await figma.clientStorage.getAsync('model');
     const ws = await figma.clientStorage.getAsync('workspace');
-    figma.ui.postMessage({ type: 'settings', hasKey: !!key, key: key || '', model: model || '', ws: ws || '' });
+    const mode = await figma.clientStorage.getAsync('mode'), server = await figma.clientStorage.getAsync('server'), token = await figma.clientStorage.getAsync('teamToken');
+    figma.ui.postMessage({ type: 'settings', hasKey: !!key, key: key || '', model: model || '', ws: ws || '', mode: mode || 'team', server: server || '', token: token || '' });
     figma.ui.postMessage({ type: 'selection-changed', hasImage: hasImage() });
   }
   if (msg.type === 'save-settings') {
     if (typeof msg.key === 'string') await figma.clientStorage.setAsync('anthropicKey', msg.key);
     if (typeof msg.model === 'string') await figma.clientStorage.setAsync('model', msg.model);
     if (typeof msg.ws === 'string') await figma.clientStorage.setAsync('workspace', msg.ws);
-    figma.notify('Settings saved on this computer');
+    if (typeof msg.mode === 'string') await figma.clientStorage.setAsync('mode', msg.mode);
+    if (typeof msg.server === 'string') await figma.clientStorage.setAsync('server', msg.server);
+    if (typeof msg.token === 'string') await figma.clientStorage.setAsync('teamToken', msg.token); // a 30-day sign-in token, never the password
+    if (!msg.quiet) figma.notify('Settings saved on this computer');
   }
   if (msg.type === 'get-selection-image') await sendSelectionImages();
   if (msg.type === 'place-svg') {

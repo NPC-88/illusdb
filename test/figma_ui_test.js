@@ -1,10 +1,11 @@
 // node test/figma_ui_test.js  → the Figma plugin UI (figma/ui.html) in a browser, with Figma and Claude simulated
-// Starts test/mock_anthropic.js itself. Needs Playwright: NODE_PATH=$(npm root -g) node test/figma_ui_test.js
+// Starts test/mock_anthropic.js and a local team server (server/server.js on :3100) itself. Needs Playwright: NODE_PATH=$(npm root -g) node test/figma_ui_test.js
 const path = require('path'), assert = require('assert'), { spawn } = require('child_process');
 const { chromium } = require('playwright');
 (async () => {
   const mock = spawn(process.execPath, [path.join(__dirname, 'mock_anthropic.js')], { stdio: 'ignore' });
-  await new Promise((r) => setTimeout(r, 400));
+  const team = spawn(process.execPath, [path.join(__dirname, '../server/server.js')], { stdio: 'ignore', env: Object.assign({}, process.env, { ANTHROPIC_API_KEY: 'sk-company', TEAM_PASSWORD: 'db-team', PORT: '3100', ANTHROPIC_BASE_URL: 'http://localhost:4010' }) });
+  await new Promise((r) => setTimeout(r, 800));
   const b = await chromium.launch(), pg = await b.newPage({ viewport: { width: 460, height: 860 } });
   const errs = [], posted = [];
   try {
@@ -17,7 +18,7 @@ const { chromium } = require('playwright');
     await pg.addInitScript(() => { window.parent.postMessage = (m) => window.__post(m.pluginMessage || m); });
     await pg.goto('file://' + path.join(__dirname, '../figma/ui.html'));
     const fig = (m) => pg.evaluate((m) => window.dispatchEvent(new MessageEvent('message', { data: { pluginMessage: m } })), m);
-    await fig({ type: 'settings', hasKey: true, key: 'sk-test', model: 'claude-sonnet-5', ws: '' });
+    await fig({ type: 'settings', hasKey: true, key: 'sk-test', model: 'claude-sonnet-5', ws: '', mode: 'key' });
     const P = () => pg.evaluate(() => { const { state } = window.__drafter, p = state.photos[state.active]; return { n: state.photos.length, active: state.active, outline: p && p.outline.length, role: p && p.role }; });
 
     // two photos: one uploaded, one from the Figma selection
@@ -59,9 +60,27 @@ const { chromium } = require('playwright');
     // expanded editor inside the plugin window
     await pg.click('#expand'); assert.ok(await pg.evaluate(() => document.getElementById('editor').open)); await pg.click('#edClose'); await pg.waitForTimeout(150);
     assert.ok(await pg.evaluate(() => !!document.querySelector('#drop #photo')));
+    // team server: sign in with the team password, draft through the server (company key, not the designer's)
+    await pg.click('#settings summary'); await pg.click('#modeSeg button[data-m=team]');
+    await pg.fill('#server', 'http://localhost:3100'); await pg.dispatchEvent('#server', 'change');
+    await pg.fill('#teamPw', 'wrong'); await pg.click('#teamIn'); await pg.waitForTimeout(400);
+    assert.match(await pg.innerText('#setMsg'), /not right/);
+    await pg.fill('#teamPw', 'db-team'); await pg.click('#teamIn'); await pg.waitForTimeout(400);
+    assert.ok(await pg.isVisible('#teamOn'), 'signed in');
+    const saved = posted.filter((m) => m.type === 'save-settings' && m.token).pop(); assert.ok(saved && saved.token.split('.').length === 3, 'token stored');
+    assert.ok(!posted.some((m) => JSON.stringify(m).includes('db-team')), 'password is never stored');
+    await pg.fill('#landmark', 'Via team'); await pg.click('#aRun'); await pg.waitForTimeout(2500);
+    const t = JSON.parse(require('fs').readFileSync('/tmp/mock_last.json'));
+    assert.equal(t.key, 'sk-company', 'company key used'); assert.equal(t.lm, 'Via team'); assert.equal(t.nImages, 2);
+    assert.ok(t.photoLines.some((l) => l.includes('designer: "portal arches"')), 'roles and captions reach the server');
+    assert.match(await pg.innerText('#aNotes'), /Server draft: Via team/);
+    // an expired / wrong token signs you out and asks to sign in again
+    await pg.evaluate(() => { window.__drafter.state.token = 'a.b.c'; }); await pg.click('#aRun'); await pg.waitForTimeout(800);
+    assert.match(await pg.innerText('#aMsg'), /sign in again/i); assert.ok(await pg.isVisible('#teamOut'), 'signed out after 401');
+
     // new landmark clears everything
     await pg.click('#newLandmark'); s = await P(); assert.equal(s.n, 0); assert.match(await pg.innerText('#aSheet'), /No draft yet/);
     assert.deepEqual(errs, []);
     console.log('figma plugin UI: all checks passed');
-  } finally { await b.close(); mock.kill(); }
+  } finally { await b.close(); mock.kill(); team.kill(); }
 })().catch((e) => { console.error(e); process.exit(1); });

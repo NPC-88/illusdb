@@ -4,10 +4,19 @@
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
-  "editorType": ["figma"],
+  "editorType": [
+    "figma"
+  ],
   "documentAccess": "dynamic-page",
   "networkAccess": {
-    "allowedDomains": ["https://api.anthropic.com"],
-    "reasoning": "Engine A sends the cropped reference photo to Claude (Anthropic API) to get a construction plan. Engine B runs locally."
+    "allowedDomains": [
+      "https://db-signature-graphics.onrender.com",
+      "https://api.anthropic.com"
+    ],
+    "devAllowedDomains": [
+      "http://localhost:3000",
+      "http://localhost:3100"
+    ],
+    "reasoning": "Drafts go to the team's Signature Graphics server (team password), or straight to the Anthropic API with the designer's own key. The cropped reference photos are sent with each draft."
   }
 }

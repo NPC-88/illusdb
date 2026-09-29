@@ -102,8 +102,11 @@ To change the password, update `TEAM_PASSWORD` in Render and redeploy. Existing 
 ## Figma plugin: install for development
 
 1. In Figma desktop, go to Plugins → Development → Import plugin from manifest… and pick `figma/manifest.json`.
-2. Open it and add an Anthropic API key under Claude API settings. The key is stored only in Figma's client storage on that machine. The model field defaults to `claude-sonnet-5`; change it to any model your key can use.
+2. Open it and, under **Claude settings**, sign in to the **Team server** with the team password (the default). Drafts then run on the company Claude account, with the same limits as the web tool. The plugin keeps a 30-day sign-in token on that computer, never the password; when it expires, it asks you to sign in again.
+   Alternatively choose **Own API key** and paste a personal Anthropic key (stored only in Figma's client storage on that machine; the model field defaults to `claude-sonnet-5`).
 3. Select one or more image layers and press **Use selected images** (up to 4), or upload photos. Crop, outline, pick sky and building, set each photo's role and caption, draft, fine-tune under Adjust, then **Place on canvas**.
+
+The team server address is listed in `figma/manifest.json` (`networkAccess.allowedDomains`, now `https://db-signature-graphics.onrender.com`). Figma only lets the plugin reach the addresses listed there, so if the server moves (for example to a custom domain), change it there and in `TEAM_SERVER` in `figma/ui.src.html`, then run `python3 build.py`. On the server, `POST /api/token` exchanges the team password for the token, and `/api/draft` accepts it as `Authorization: Bearer …` (the web page keeps using its cookie).
 
 The plugin has the web tool's photo panel: several photos with roles and captions, Crop / Outline / Sky / Building with Undo/Redo, the expanded zoom editor, the silhouette preview with its sliders, "Read from the photos" and hover highlighting of parts. It is the same code: `build.py` copies the web tool's photo panel markup, its stylesheet and `web/photos.js` into `figma/ui.html`. The plugin also keeps the JSON plan editor.
 

@@ -71,14 +71,28 @@ textarea.code{min-height:160px}
 </div>
 
 <div class="pane">
-  <details id="settings"><summary>Claude API settings</summary>
+  <details id="settings"><summary>Claude settings</summary>
     <div class="field" style="margin-top:8px">
+      <div class="seg" id="modeSeg" role="group" aria-label="How to reach Claude"><button type="button" data-m="team" aria-pressed="true">Team server</button><button type="button" data-m="key" aria-pressed="false">Own API key</button></div>
+    </div>
+    <div class="field" id="teamBox" style="margin-top:8px">
+      <label for="server">Team server</label><input type="text" id="server" placeholder="https://db-signature-graphics.onrender.com">
+      <div id="teamOut" class="field">
+        <label for="teamPw">Team password</label>
+        <div class="row" style="flex-wrap:nowrap"><input type="text" id="teamPw" autocomplete="off" style="-webkit-text-security:disc" aria-label="Team password"><button id="teamIn" type="button" class="primary">Sign in</button></div>
+      </div>
+      <div id="teamOn" class="row between" hidden><span class="hint">Signed in to the team server for 30 days.</span><button id="teamOff" type="button" class="linkbtn">Sign out</button></div>
+      <label for="tier">Model</label><select id="tier"><option value="default">Balanced</option><option value="complex">Most capable (slower)</option></select>
+      <p class="hint">Drafts use the company Claude account, like the web tool. The password is only used to sign in; this computer keeps a sign-in token, not the password.</p>
+    </div>
+    <div class="field" id="keyBox" style="margin-top:8px" hidden>
       <label for="key">Anthropic API key</label><input type="text" id="key" placeholder="sk-ant-…" autocomplete="off" style="-webkit-text-security:disc">
       <label for="ws">Workspace ID (only if your key needs it)</label><input type="text" id="ws" placeholder="wrkspc_…">
       <label for="model">Model</label><input type="text" id="model" placeholder="claude-sonnet-5">
       <p class="hint">Stored only on this computer (Figma client storage). The cropped photos are sent to api.anthropic.com when you press Draft.</p>
       <button id="saveSettings" type="button">Save</button>
     </div>
+    <p id="setMsg" class="hint" hidden></p>
   </details>
 </div>
 
@@ -92,7 +106,10 @@ textarea.code{min-height:160px}
 const D = window.DBSig, R = D.RULES, $ = (id) => document.getElementById(id);
 const freshMods = () => JSON.parse(JSON.stringify(D.DEFAULT_MODS));
 const state = { photos: [], active: 0, main: 0, tool: 'crop', height: 'auto', color: R.colors['DB Red'], showBands: true,
-  scene: null, scaled: null, res: null, name: 'Signature Graphic', mods: freshMods(), hover: null, key: '', model: '', ws: '' };
+  scene: null, scaled: null, res: null, name: 'Signature Graphic', mods: freshMods(), hover: null, key: '', model: '', ws: '',
+  mode: 'team', server: '', token: '' };
+const TEAM_SERVER = 'https://db-signature-graphics.onrender.com'; // also listed in manifest.json → networkAccess
+const serverURL = () => (state.server || TEAM_SERVER).replace(/\/+$/, '');
 const post = (m) => parent.postMessage({ pluginMessage: m }, '*');
 const toast = (t) => post({ type: 'notify', message: t });
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -209,33 +226,49 @@ async function readStream(r){ // server-sent events → answer text + stop reaso
 const toB64 = (canvas) => canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
 let ctl = null;
 async function draft(revise){
-  if (!state.key) { $('settings').open = true; showA('Add your Anthropic API key under Claude API settings first.', true); return; }
+  if (state.mode === 'team' ? !state.token : !state.key) { $('settings').open = true; showA(state.mode === 'team' ? 'Sign in to the team server under Claude settings first.' : 'Add your Anthropic API key under Claude settings first.', true); return; }
   if (!state.photos.length) { showA('Add a photo first.', true); return; }
-  const order = photoOrder(), content = [];
-  order.forEach((p, i) => {
-    if (order.length > 1) content.push({ type: 'text', text: `Photo ${i + 1} (${i === 0 ? 'main view, ' : ''}${D.PHOTO_ROLES[p.role] || 'another angle'}):` });
-    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: toB64(cropCanvas(i === 0 ? 1400 : 1100, p)) } });
-  });
-  const full = makeSketch();
-  const prompt = D.buildPrompt({ height: state.height === 'auto' ? null : +state.height, landmark: $('landmark').value.trim(), notes: $('notes').value.trim(),
+  const order = photoOrder(), full = makeSketch();
+  const req = { height: state.height === 'auto' ? null : +state.height, landmark: $('landmark').value.trim(), notes: $('notes').value.trim(),
     sketch: full && { text: full.text, cols: full.cols, rows: full.rows, cell: full.cell, widthDp: full.widthDp, heightDp: full.heightDp }, features: measuredFeatures(),
-    hasPhoto: true, photoCount: order.length, photos: order.map(p => ({ role: p.role, caption: (p.caption || '').trim() })),
-    previous: revise ? D.bakeScene(state.scaled, state.mods) : null, feedback: revise ? $('aFeedback').value.trim() : '' });
-  content.push({ type: 'text', text: prompt });
+    photos: order.map(p => ({ role: p.role, caption: (p.caption || '').trim() })),
+    previous: revise ? D.bakeScene(state.scaled, state.mods) : null, feedback: revise ? $('aFeedback').value.trim() : '' };
+  const images = order.map((p, i) => toB64(cropCanvas(i === 0 ? 1400 : 1100, p)));
   ctl = new AbortController(); busy(true, revise ? 'Claude is revising…' : 'Claude is planning the construction…'); showA('');
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: ctl.signal,
-      headers: Object.assign({ 'content-type': 'application/json', 'x-api-key': state.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, state.ws ? { 'anthropic-workspace-id': state.ws } : {}),
-      body: JSON.stringify({ model: state.model || 'claude-sonnet-5', max_tokens: 32000, stream: true, messages: [{ role: 'user', content }] }) });
-    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error((j.error && j.error.message) || ('HTTP ' + r.status)); }
-    const out = await readStream(r);
-    if (out.stop === 'refusal') throw new Error('Claude declined this request. Try a different photo or crop.');
-    let sc; try { sc = parseJSON(out.text); } catch (e) { throw new Error(out.stop === 'max_tokens' ? 'The plan was too long and got cut off. Draft again, or add a note such as "keep it simpler".' : 'Claude’s answer was not a valid plan. Draft again.'); }
-    if (!sc.shapes || !sc.shapes.length) throw new Error('The plan had no shapes. Try again or tighten the crop.');
+    const sc = state.mode === 'team' ? await draftViaTeam(req, images, ctl.signal) : await draftWithKey(req, images, ctl.signal);
+    if (!sc || !sc.shapes || !sc.shapes.length) throw new Error('The plan had no shapes. Try again or tighten the crop.');
     if (revise && state.scene && state.scene.render && !sc.render) sc.render = state.scene.render;
     setScene(sc); if (revise) $('aFeedback').value = '';
-  } catch (e) { if (e.name !== 'AbortError') showA('Claude request failed: ' + e.message, true); }
+  } catch (e) { if (e.name !== 'AbortError') showA(e.message, true); }
   finally { busy(false); ctl = null; }
+}
+// team server: it builds the prompt, calls Claude with the company key and checks every input (same as the web tool)
+async function draftViaTeam(req, images, signal){
+  let r;
+  try { r = await fetch(serverURL() + '/api/draft', { method: 'POST', signal, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + state.token }, body: JSON.stringify(Object.assign({ images, tier: $('tier').value }, req)) }); }
+  catch (e) { if (e.name === 'AbortError') throw e; throw new Error('Could not reach the team server. Check your connection; if it was idle it may need half a minute to wake up.'); }
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401) { state.token = ''; post({ type: 'save-settings', token: '', quiet: true }); syncSettings(); $('settings').open = true; }
+  if (!r.ok) throw new Error(j.message || 'The team server returned an error (HTTP ' + r.status + ').');
+  return j.scene;
+}
+// own key: Messages API straight from the plugin, streamed with room for thinking
+async function draftWithKey(req, images, signal){
+  const content = [];
+  images.forEach((data, i) => {
+    if (images.length > 1) content.push({ type: 'text', text: `Photo ${i + 1} (${i === 0 ? 'main view, ' : ''}${D.PHOTO_ROLES[req.photos[i].role] || 'another angle'}):` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } });
+  });
+  content.push({ type: 'text', text: D.buildPrompt(Object.assign({ hasPhoto: true, photoCount: images.length }, req)) });
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal,
+    headers: Object.assign({ 'content-type': 'application/json', 'x-api-key': state.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, state.ws ? { 'anthropic-workspace-id': state.ws } : {}),
+    body: JSON.stringify({ model: state.model || 'claude-sonnet-5', max_tokens: 32000, stream: true, messages: [{ role: 'user', content }] }) });
+  if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error('Claude request failed: ' + ((j.error && j.error.message) || ('HTTP ' + r.status))); }
+  const out = await readStream(r);
+  if (out.stop === 'refusal') throw new Error('Claude declined this request. Try a different photo or crop.');
+  try { return parseJSON(out.text); }
+  catch (e) { throw new Error(out.stop === 'max_tokens' ? 'The plan was too long and got cut off. Draft again, or add a note such as "keep it simpler".' : 'Claude’s answer was not a valid plan. Draft again.'); }
 }
 function busy(on, t){ $('aBusy').hidden = !on; $('aStop').hidden = !on; $('aRun').disabled = on; $('aRevise').disabled = on; if (t) $('aBusyText').textContent = t; }
 $('aRun').onclick = () => draft(false);
@@ -247,13 +280,38 @@ $('apply').onclick = () => { try { setScene(JSON.parse($('json').value)); showA(
 $('place').onclick = () => { const res = state.res; if (!res) { showA('Nothing to place yet.', true); return; } const name = 'SG – ' + state.name; post({ type: 'place-svg', name, svg: D.toSVG(res, { color: state.color, title: name, safeArea: $('safe').checked }) }); };
 
 // ---------- settings
+function syncSettings(){
+  [...$('modeSeg').children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === state.mode)));
+  $('teamBox').hidden = state.mode !== 'team'; $('keyBox').hidden = state.mode === 'team';
+  $('teamOut').hidden = !!state.token; $('teamOn').hidden = !state.token; $('server').value = state.server || TEAM_SERVER;
+}
+const setMsg = (t, err) => { const m = $('setMsg'); m.hidden = !t; m.textContent = t || ''; m.classList.toggle('err', !!err); };
+$('modeSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; state.mode = b.dataset.m; post({ type: 'save-settings', mode: state.mode, quiet: true }); syncSettings(); setMsg(''); };
+$('server').addEventListener('change', e => { const v = e.target.value.trim().replace(/\/+$/, ''); state.server = v === TEAM_SERVER ? '' : v; state.token = ''; post({ type: 'save-settings', server: state.server, token: '', quiet: true }); syncSettings(); });
+$('teamIn').onclick = async () => {
+  const pw = $('teamPw').value; if (!pw) { setMsg('Enter the team password.', true); return; }
+  $('teamIn').disabled = true; setMsg('Signing in…');
+  try {
+    const r = await fetch(serverURL() + '/api/token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.token) throw new Error(j.message || 'Sign-in failed (HTTP ' + r.status + ').');
+    state.token = j.token; $('teamPw').value = ''; post({ type: 'save-settings', token: state.token, quiet: true }); syncSettings(); setMsg(''); showA(''); toast('Signed in to the team server');
+  } catch (e) { setMsg(e.message === 'Failed to fetch' ? 'Could not reach the team server. If it was idle it may need half a minute to wake up; try again.' : e.message, true); }
+  finally { $('teamIn').disabled = false; }
+};
+$('teamPw').addEventListener('keydown', e => { if (e.key === 'Enter') $('teamIn').click(); });
+$('teamOff').onclick = () => { state.token = ''; post({ type: 'save-settings', token: '', quiet: true }); syncSettings(); };
 $('saveSettings').onclick = () => { state.key = $('key').value.trim(); state.model = $('model').value.trim(); state.ws = $('ws').value.trim(); post({ type: 'save-settings', key: state.key, model: state.model, ws: state.ws }); $('settings').open = false; showA(''); };
 
 // ---------- images from the Figma selection
 $('fromSel').onclick = () => post({ type: 'get-selection-image' });
 window.addEventListener('message', async (ev) => {
   const m = ev.data && ev.data.pluginMessage; if (!m) return;
-  if (m.type === 'settings') { state.key = m.key; state.model = m.model; state.ws = m.ws || ''; $('key').value = m.key; $('model').value = m.model; $('ws').value = state.ws; if (!m.hasKey) $('settings').open = true; }
+  if (m.type === 'settings') {
+    Object.assign(state, { key: m.key, model: m.model, ws: m.ws || '', mode: m.mode || 'team', server: m.server || '', token: m.token || '' });
+    $('key').value = m.key; $('model').value = m.model; $('ws').value = state.ws; syncSettings();
+    if (state.mode === 'team' ? !state.token : !m.hasKey) $('settings').open = true;
+  }
   if (m.type === 'selection-changed') $('fromSel').disabled = !m.hasImage;
   if (m.type === 'selection-images') {
     const room = MAX_PHOTOS - state.photos.length;
